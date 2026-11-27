@@ -42,9 +42,9 @@ def today(timezone: str) -> dt.datetime:
     return dt.datetime.now(ZoneInfo(timezone))
 
 
-def sig(name: str, tags: list[str]) -> str:
-    """What a verdict was given for: the title and the tags."""
-    return hashlib.sha256(json.dumps([name, tags]).encode()).hexdigest()[:16]
+def sig(i: collect.Item) -> str:
+    """What a verdict was given for: the title, the tags and the link (the keywords read it)."""
+    return hashlib.sha256(json.dumps([i.name, i.tags, i.url]).encode()).hexdigest()[:16]
 
 
 def full(raw: bytes, img_dir: Path) -> str:
@@ -92,7 +92,7 @@ def store(db: DB, items: list[collect.Item]) -> None:
         c.executemany(
             "UPDATE listings SET judged = NULL, liked = NULL WHERE source = ? AND key = ?"
             " AND judged_as != '' AND judged_as != ? AND dropped = 0",
-            [(i.source, i.key, sig(i.name, i.tags)) for i in items],
+            [(i.source, i.key, sig(i)) for i in items],
         )
 
 
@@ -244,7 +244,7 @@ def record(db: DB, listing_id: int, i: collect.Item, got: tuple[bool, int, str])
         got[1],
         got[2],
         runs.now(),
-        sig(i.name, i.tags),
+        sig(i),
         listing_id,
         PAGE_DROP,  # a drop by the listing's own page outlasts any verdict on its first photo
     )
@@ -262,7 +262,7 @@ def recheck(
         r = row(db, i)
         if not r or not r["judged_as"] or r["dropped"]:
             continue
-        if r["judged"] and r["judged_as"] == sig(i.name, i.tags):
+        if r["judged"] and r["judged_as"] == sig(i):
             continue
         if profile.score(i.name, i.tags, i.url, prof)[0] < 0:
             record(db, r["id"], i, (True, 0, "hidden by a keyword"))

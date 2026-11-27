@@ -11,7 +11,7 @@
 {% if photos %}
 <div class="photos">{% for p in photos %}<a href="/img/{{ p }}"><img src="/img/{{ p }}" alt="" loading="{{ 'eager' if loop.first else 'lazy' }}"></a>{% endfor %}</div>
 {% else %}
-<div class="empty"><p>The shop's photos could not be fetched. They are tried again each time this page is opened.</p></div>
+<div class="empty"><p>The shop's photos could not be fetched, or have not been checked yet. Opening this page tries again, a few times.</p></div>
 {% endif %}
 {% if text %}
 <h2 class="rule-head"><span>What the shop says</span></h2>

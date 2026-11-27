@@ -229,9 +229,9 @@ def create_app(s: Settings, opened: DB | None = None, start_scheduler: bool = Fa
             raise HTTPException(404)
         return FileResponse(path, media_type="image/jpeg")
 
-    # The alert reads this gauge: a sweep counts only when it read listings, its mail did
-    # not fail and the model answered.
-    delivered = runs.DELIVERED + " AND alerts NOT LIKE 'failed%'"
+    # The alert reads this gauge: a sweep counts only when it read listings, the model
+    # answered, and its mail neither failed nor was switched off with listings waiting.
+    delivered = runs.DELIVERED + " AND alerts NOT LIKE 'failed%' AND alerts != 'off'"
     metrics.mount(
         app,
         "toys",
