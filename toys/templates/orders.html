@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "_row.html" import row %}
+{% block title %}On order · Toys{% endblock %}
+{% block main %}
+{% if not count %}
+<div class="empty"><p>Nothing is on order or waiting to be chased.</p></div>
+{% else %}
+<div class="lead">
+  <p class="count"><b>{{ count }}</b><span>order{{ '' if count == 1 else 's' }} not yet on the shelf<br>{{ total | gbp }} paid so far</span></p>
+</div>
+{% for state, items in by_state.items() %}
+<h2 class="rule-head"><span>{{ state }}</span><span class="n">{{ items | length }}</span></h2>
+<ul class="rows">{% for i in items %}{{ row(i) }}{% endfor %}</ul>
+{% endfor %}
+{% endif %}
+{% endblock %}

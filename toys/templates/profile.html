@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Likes · Toys{% endblock %}
+{% block main %}
+{% if saved %}<p class="saved">Saved. The next sweep judges new listings against these lists.</p>{% endif %}
+<form class="likes" method="post" action="/profile">
+  <h2 class="rule-head"><span>Characters you collect</span></h2>
+  <p class="quiet">One per line or separated by commas. A new listing in a franchise below that names none of its characters is not a match.</p>
+  {% for name in names %}
+  <label class="field"><span>{{ name }}{% if owned.get(name) %} <b class="n">{{ owned[name] }} owned</b>{% endif %}</span>
+    <textarea name="chars:{{ name }}" rows="3">{{ p.characters.get(name, []) | join(', ') }}</textarea></label>
+  {% endfor %}
+  <div class="field add">
+    <label><span>Add a franchise</span><input type="text" name="add_franchise" autocomplete="off"></label>
+    <label class="grow"><span>Its characters</span><input type="text" name="add_characters" autocomplete="off"></label>
+  </div>
+  <h2 class="rule-head"><span>Never</span></h2>
+  <label class="field"><span>Characters you never want, whatever the franchise</span>
+    <textarea name="never" rows="2">{{ p.never | join(', ') }}</textarea></label>
+  <h2 class="rule-head"><span>Notes for the judge</span></h2>
+  <label class="field"><span>One note per line, in your own words</span>
+    <textarea name="notes" rows="5">{{ p.notes | join('\n') }}</textarea></label>
+  <button type="submit">Save</button>
+</form>
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ i.item }} · Toys{% endblock %}
+{% block main %}
+<p class="back"><a href="/">Collection</a></p>
+<h1 class="title">{{ i.item }}</h1>
+<dl class="facts">
+  <div><dt>Record</dt><dd class="num">{{ i.id }}</dd></div>
+  <div><dt>State</dt><dd class="{{ 'mark-open' if i.group == 'open' }}">{{ i.state }}</dd></div>
+  <div><dt>Maker</dt><dd>{{ i.maker or 'Not set' }}</dd></div>
+  <div><dt>Franchise</dt><dd>{{ i.franchise or 'Not set' }}</dd></div>
+  <div><dt>Seller</dt><dd>{{ i.vendor or 'Not known' }}</dd></div>
+  <div><dt>Order</dt><dd class="num">{{ i.order_ref or 'No reference' }}</dd></div>
+  <div><dt>Bought</dt><dd class="num">{{ i.bought or 'No date' }}</dd></div>
+  <div><dt>Paid</dt><dd class="num">{{ i.gbp_paid | gbp }}{% if i.amount and i.currency and i.currency != 'GBP' %} <span class="sub">({{ '%.2f' % i.amount }} {{ i.currency }})</span>{% endif %}</dd></div>
+  <div><dt>Seller says</dt><dd>{{ i.seller_status or 'Nothing on record' }}</dd></div>
+  <div><dt>Kind</dt><dd>{{ i.kind or 'Not set' }}</dd></div>
+</dl>
+<h2 class="rule-head"><span>Deliveries</span><span class="n">{{ i.parcels | length }}</span></h2>
+{% if i.parcels %}
+<ul class="plain">{% for p in i.parcels %}<li>{{ p.name }} · {{ p.carrier }} · {{ 'delivered' if p.delivered else 'not delivered' }}{% if p.last %} · <span class="num">{{ p.last }}</span>{% endif %}</li>{% endfor %}</ul>
+{% else %}
+<p class="quiet">No delivery on record for this piece.</p>
+{% endif %}
+{% if i.notes %}
+<h2 class="rule-head"><span>Notes</span></h2>
+<ul class="plain">{% for n in i.notes %}<li>{{ n }}</li>{% endfor %}</ul>
+{% endif %}
+{% endblock %}

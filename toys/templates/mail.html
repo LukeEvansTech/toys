@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ title }}</title>
+  </head>
+  <body style="margin:0;background:#f4f2ee">
+    <div style="font-family:-apple-system,Segoe UI,Arial,sans-serif;max-width:680px;margin:auto;padding:12px;color:#141414">
+      <h1 style="font-size:20px;margin:8px 0 4px">{{ picks | length }} for you, {{ rest | length }} other new</h1>
+      {% for n in notes %}<p style="margin:6px 0;color:#9a4a00;font-size:14px">{{ n }}</p>{% endfor %}
+      {% for r in picks %}
+      <div style="margin:18px 0 26px">
+        <a href="{{ link('/listing/' ~ r.id) }}" style="text-decoration:none;color:#141414">
+          {% if src(r.photo) %}<img src="{{ src(r.photo) }}" width="656" style="width:100%;display:block;background:#fff" alt="" />{% endif %}
+          <div style="font-size:18px;font-weight:600;margin-top:8px;line-height:1.3">{{ r.name }}</div>
+        </a>
+        <div style="font-size:14px;color:#555">{{ r.source }}{% if r.price %} · {{ r.price }}{% endif %}</div>
+        {% if r.reason %}<div style="font-size:14px;color:#0a6b31">{{ r.reason }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      {% if rest %}
+      <h2 style="font-size:15px;margin:24px 0 6px;border-top:1px solid #cfcac1;padding-top:14px">Everything else new</h2>
+      <table width="100%" cellspacing="0" cellpadding="0" role="presentation">
+        {% for pair in rest | batch(2) %}
+        <tr>
+          {% for r in pair %}
+          <td width="50%" valign="top" style="padding:6px">
+            <a href="{{ link('/listing/' ~ r.id) }}" style="text-decoration:none;color:#141414">
+              {% if src(r.photo) %}<img src="{{ src(r.photo) }}" width="310" style="width:100%;display:block;background:#fff" alt="" />{% endif %}
+              <div style="font-size:13px;line-height:1.3;margin-top:4px">{{ r.name }}</div>
+            </a>
+            <div style="font-size:12px;color:#555">{{ r.source }}{% if r.price %} · {{ r.price }}{% endif %}</div>
+          </td>
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </table>
+      {% endif %}
+      <p style="font-size:12px;color:#555;border-top:1px solid #cfcac1;padding-top:10px;margin-top:20px">
+        {% for line in coverage %}{{ line }}<br />{% endfor %}
+      </p>
+      <p style="font-size:13px"><a href="{{ link('/new') }}" style="color:#141414">Open Toys</a></p>
+    </div>
+  </body>
+</html>

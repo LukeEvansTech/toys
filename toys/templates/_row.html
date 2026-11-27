@@ -1,0 +1,17 @@
+{% macro row(i) -%}
+<li class="row is-{{ i.group }}">
+  <a class="row-link" href="/item/{{ i.id }}">
+    <span class="code">{{ i.id }}</span>
+    <span class="what">
+      <span class="t">{{ i.item }}</span>
+      <span class="sub">{{ [i.maker, i.franchise] | select | join(' · ') or 'No maker or franchise set' }}</span>
+    </span>
+    <span class="who">
+      <span>{{ i.vendor or 'Seller not known' }}</span>
+      <span class="sub">{{ i.bought or 'No date' }}</span>
+    </span>
+    <span class="price">{{ i.gbp_paid | gbp }}</span>
+    <span class="state">{{ i.state }}</span>
+  </a>
+</li>
+{%- endmacro %}

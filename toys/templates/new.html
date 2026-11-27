@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}New · Toys{% endblock %}
+{% macro cell(r) -%}
+<li class="cell">
+  <a class="cell-link" href="/listing/{{ r.id }}">
+    <span class="cell-head"><span class="code">{{ r.source }}</span><span class="age">{{ r.first_seen | ago }}</span></span>
+    <span class="ph">{% if r.photo %}<img src="/img/{{ r.photo }}" alt="" loading="lazy" decoding="async">{% else %}<span class="no-ph">No photo</span>{% endif %}</span>
+    <span class="t">{{ r.name }}</span>
+    <span class="price">{{ r.price or 'No price shown' }}</span>
+    {% if r.reason %}<span class="sub why">{{ r.reason }}</span>{% endif %}
+  </a>
+</li>
+{%- endmacro %}
+{% block main %}
+{% if not picks and not rest %}
+<div class="empty"><p>No new listings to show yet. A shop's first read is a baseline, so listings appear from the first sweep after it that finds something new.{% if waiting %} {{ waiting }} listings are on record from the baseline.{% endif %}</p></div>
+{% endif %}
+{% if picks %}
+<h2 class="rule-head"><span>For you</span><span class="n">{{ picks | length }}</span></h2>
+<ul class="grid grid-big">{% for r in picks %}{{ cell(r) }}{% endfor %}</ul>
+{% endif %}
+{% if rest %}
+<h2 class="rule-head"><span>Other new listings</span><span class="n">{{ rest | length }}</span></h2>
+<ul class="grid">{% for r in rest %}{{ cell(r) }}{% endfor %}</ul>
+{% endif %}
+{% endblock %}

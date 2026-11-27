@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ r.name }} · Toys{% endblock %}
+{% block main %}
+<p class="back"><a href="/new">New</a></p>
+<h1 class="title">{{ r.name }}</h1>
+<p class="buy"><span class="price">{{ r.price or 'No price shown' }}</span> <a class="out" href="{{ r.url }}" rel="noopener noreferrer">Open at {{ r.source }}</a></p>
+{% if r.reason %}<p class="why">{{ r.reason }}</p>{% endif %}
+{% if facts %}
+<dl class="facts">{% for label, value in facts %}<div><dt>{{ label }}</dt><dd>{{ value }}</dd></div>{% endfor %}</dl>
+{% endif %}
+{% if photos %}
+<div class="photos">{% for p in photos %}<a href="/img/{{ p }}"><img src="/img/{{ p }}" alt="" loading="{{ 'eager' if loop.first else 'lazy' }}"></a>{% endfor %}</div>
+{% else %}
+<div class="empty"><p>The shop's photos could not be fetched, or have not been checked yet. Opening this page tries again, a few times.</p></div>
+{% endif %}
+{% if text %}
+<h2 class="rule-head"><span>What the shop says</span></h2>
+<p class="shop-text">{{ text }}</p>
+{% endif %}
+{% if tags %}<p class="quiet">{{ tags | join(' · ') }}</p>{% endif %}
+{% endblock %}

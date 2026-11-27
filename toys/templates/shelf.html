@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% from "_row.html" import row %}
+{% block title %}Collection · Toys{% endblock %}
+{% block main %}
+{% if empty %}
+<div class="empty"><p>The collection has not been loaded yet. Load <code>collection.json</code> on the <a href="/log">Log</a> page.</p></div>
+{% else %}
+<div class="lead">
+  <p class="count"><b>{{ items | length }}</b><span>piece{{ '' if items | length == 1 else 's' }}<br>{{ total | gbp }} paid{% if unpriced %}, {{ unpriced }} with no price on record{% endif %}</span></p>
+</div>
+<form class="filters" method="get" action="/">
+  <label><span>Show</span>
+    <select name="show">
+      <option value="">Everything</option>
+      {% for k, v in groups.items() %}<option value="{{ k }}" {{ 'selected' if f.show == k }}>{{ v }}</option>{% endfor %}
+    </select></label>
+  <label><span>Franchise</span>
+    <select name="franchise">
+      <option value="">All</option>
+      <option value="-" {{ 'selected' if f.franchise == '-' }}>Not set</option>
+      {% for x in franchises %}<option {{ 'selected' if f.franchise == x }}>{{ x }}</option>{% endfor %}
+    </select></label>
+  <label><span>Seller</span>
+    <select name="vendor">
+      <option value="">All</option>
+      {% for x in vendors %}<option {{ 'selected' if f.vendor == x }}>{{ x }}</option>{% endfor %}
+    </select></label>
+  <label class="grow"><span>Find</span>
+    <input type="search" name="q" value="{{ f.q }}" placeholder="Name, maker, order number"></label>
+  <button type="submit">Apply</button>
+</form>
+{% if items %}
+<ul class="rows">{% for i in items %}{{ row(i) }}{% endfor %}</ul>
+{% else %}
+<div class="empty"><p>Nothing matches these filters. <a href="/">Clear them</a>.</p></div>
+{% endif %}
+<script>
+  for (const s of document.querySelectorAll('.filters select')) s.addEventListener('change', () => s.form.submit());
+</script>
+{% endif %}
+{% endblock %}
