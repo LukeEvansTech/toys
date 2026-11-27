@@ -240,6 +240,13 @@ def test_the_rules_score_characters_not_franchises():
     assert profile.lines("Turtle, Dragon\n Turtle \n") == ["Turtle", "Dragon"]
 
 
+def test_the_first_object_in_a_reply_is_the_answer():
+    twice = 'Sure.\n{"drop": true, "like": 0, "extra": {}}\n\nCorrection:\n{"drop": false}'
+    assert judge.first_json(twice) == {"drop": True, "like": 0, "extra": {}}
+    assert judge.first_json("no object") is None and judge.first_json(None) is None
+    assert judge.first_json('{"drop": tru') is None
+
+
 def test_a_verdict_is_only_what_the_model_was_asked_for():
     assert judge.verdict({"drop": False, "like": 3, "reason": "x" * 300}) == (
         False,
