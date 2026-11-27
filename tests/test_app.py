@@ -399,6 +399,14 @@ def test_a_listing_whose_photo_could_not_be_fetched_is_held(env):
     assert state["sent"] == [] and state["asked"] == []  # not judged on its title
 
 
+def test_a_verdict_on_words_alone_ends_when_a_photo_comes():
+    bare = collect.Item("3", "Turtle", "https://shop.example/3")
+    shown = collect.Item(
+        "3", "Turtle", "https://shop.example/3", image="https://shop.example/3.jpg"
+    )
+    assert sweep.sig(bare) != sweep.sig(shown)
+
+
 def test_a_photo_that_will_not_download_uses_none_of_the_cap(env, monkeypatch):
     s, db, state = env
     monkeypatch.setenv("TOYS_JUDGE_CAP", "1")

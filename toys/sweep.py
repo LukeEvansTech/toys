@@ -43,8 +43,10 @@ def today(timezone: str) -> dt.datetime:
 
 
 def sig(i: collect.Item) -> str:
-    """What a verdict was given for: the title, the tags and the link (the keywords read it)."""
-    return hashlib.sha256(json.dumps([i.name, i.tags, i.url]).encode()).hexdigest()[:16]
+    """What a verdict was given for: the title, the tags, the link (the keywords read it),
+    and whether there was a photo, so one given on the words alone ends when a photo comes."""
+    told = [i.name, i.tags, i.url, bool(i.image)]
+    return hashlib.sha256(json.dumps(told).encode()).hexdigest()[:16]
 
 
 def full(raw: bytes, img_dir: Path) -> str:
