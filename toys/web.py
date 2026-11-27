@@ -184,7 +184,7 @@ def create_app(s: Settings, opened: DB | None = None, start_scheduler: bool = Fa
             "log",
             recent=[(r, runs.coverage(db, r["id"])) for r in recent],
             next_at=scheduler.next_time(s.schedule, s.common.timezone),
-            last_mail=db.get(sweep.LAST_MAIL, None),
+            last_mail=sweep.last_mail(db),
             counts={
                 "collection": db.one("SELECT COUNT(*) n FROM collection")["n"],
                 "listings": db.one("SELECT COUNT(*) n FROM listings")["n"],
@@ -193,7 +193,7 @@ def create_app(s: Settings, opened: DB | None = None, start_scheduler: bool = Fa
 
     @app.get("/mail", response_class=HTMLResponse)
     def last_mail():
-        m = db.get(sweep.LAST_MAIL, None)
+        m = sweep.last_mail(db)
         if not m:
             raise HTTPException(404)
         return HTMLResponse(m["html"])

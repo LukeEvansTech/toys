@@ -205,6 +205,9 @@ def test_a_renamed_listing_is_judged_again_before_it_is_shown(env):
     run_id = sweep.run(db, s)
     assert "Dragon" not in client.get("/new").text
     assert db.one("SELECT alerts FROM runs WHERE id = ?", run_id)["alerts"].startswith("failed")
+    assert client.get("/mail").status_code == 404  # the saved mail shows it as it was
+    # the shop stops showing it before the model answers: it is still asked about
+    state["shop"] = ["1", "2"]
     state["model"] = {"Dragon in a new pose": (True, 0, "")}
     sweep.run(db, s)
     assert "Dragon" not in client.get("/new").text
@@ -371,7 +374,9 @@ def test_a_page_photo_is_shown_only_once_the_model_has_cleared_it(page):
     client = TestClient(create_app(s, db))
     assert client.get(f"/listing/{listing()['id']}").status_code == 200  # no model: none shown
     assert listing()["dropped"] == 0
-    db.put(sweep.LAST_MAIL, {"subject": "x", "html": "Item 3", "at": "", "sent": True})
+    mail = {"subject": "x", "html": "Item 3", "ids": [listing()["id"]], "at": "", "sent": True}
+    db.put(sweep.LAST_MAIL, mail)
+    assert client.get("/mail").status_code == 200
     assert sweep.fill_detail(db, s, FakeModel([{"drop": True}]), listing()) == {"dropped": True}
     assert listing()["dropped"] == 1
     assert client.get("/mail").status_code == 404  # the saved mail may have shown it

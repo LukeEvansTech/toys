@@ -113,6 +113,39 @@ def pending(db: DB, source: str, showing: set[str]) -> list[collect.Item]:
     ]
 
 
+def unjudged(db: DB, source: str, showing: set[str]) -> list[collect.Item]:
+    """Listings the shop renamed, whose new verdict has not come, and which it no longer
+    shows on the page read: without these the recheck would never be made."""
+    rows = db.all(
+        "SELECT * FROM listings WHERE source = ? AND judged IS NULL AND judged_as != ''"
+        " AND dropped = 0",
+        source,
+    )
+    return [
+        collect.Item(
+            r["key"], r["name"], r["url"], r["price"], r["image"], json.loads(r["tags"]), source
+        )
+        for r in rows
+        if r["key"] not in showing
+    ]
+
+
+def last_mail(db: DB) -> dict | None:
+    """The saved copy of the last mail, or None once a listing in it is no longer clear:
+    dropped since, or renamed and waiting for its verdict."""
+    m = db.get(LAST_MAIL, None)
+    if not m:
+        return None
+    ids = m.get("ids", [])
+    marks = ",".join("?" * len(ids))
+    clear = db.one(
+        f"SELECT COUNT(*) n FROM listings WHERE id IN ({marks}) AND dropped = 0"
+        " AND judged IS NOT NULL",
+        *ids,
+    )
+    return m if clear["n"] == len(ids) else None
+
+
 def row(db: DB, i: collect.Item) -> dict:
     r = db.one("SELECT * FROM listings WHERE source = ? AND key = ?", i.source, i.key)
     return dict(r) if r else {}
@@ -161,7 +194,6 @@ def fill_detail(db: DB, s: Settings, model: LLM, listing: dict) -> dict:
             PAGE_DROP,
             listing["id"],
         )
-        db.put(LAST_MAIL, None)  # the saved copy of the last mail may show it
         return {"dropped": True}
     facts = judge.facts(db, model, got["text"])
     detail = {
@@ -334,7 +366,8 @@ def deliver(db: DB, s: Settings, run_id: int, sorted_: dict, send: bool) -> str:
     html, text, photos, web = render(
         s, picks, rest, runs.coverage(db, run_id), notes_for(sorted_), subject
     )
-    db.put(LAST_MAIL, {"subject": subject, "html": web, "at": runs.now(), "sent": False})
+    saved = {"subject": subject, "html": web, "ids": [r["id"] for r in picks + rest]}
+    db.put(LAST_MAIL, saved | {"at": runs.now(), "sent": False})
     if not send or not c.mail_on:
         return "off"
     result = mail.send(
@@ -349,7 +382,7 @@ def deliver(db: DB, s: Settings, run_id: int, sorted_: dict, send: bool) -> str:
         "Toys",
     )
     if result == "sent":
-        db.put(LAST_MAIL, {"subject": subject, "html": web, "at": runs.now(), "sent": True})
+        db.put(LAST_MAIL, saved | {"at": runs.now(), "sent": True})
         stamp = runs.now()
         for r in picks + rest:
             db.run("UPDATE listings SET mailed = ? WHERE id = ?", stamp, r["id"])
@@ -424,6 +457,8 @@ def _run(db: DB, s: Settings, trigger: str, notify_on: bool, sample: int) -> int
             new += got.items[:sample] if sample else [i for i in got.items if i.key in fresh]
             known += [i for i in got.items if i.key not in fresh]
             read[got.name] = [i.key for i in got.items]
+            if not sample:
+                known += unjudged(db, got.name, set(read[got.name]))
             if not sample and seen.baselined(db, got.name):
                 owed = pending(db, got.name, set(read[got.name]))
                 new += owed
