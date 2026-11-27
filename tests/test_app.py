@@ -376,7 +376,7 @@ def test_a_shop_description_is_kept_as_text_only():
     page["og"] = "https://s.example/p/9/other.jpg"
     got = sources.page_detail(page, own, image="https://s.example/p/7/small.jpg")
     assert got["images"] == ["https://s.example/p/7/a.jpg"]
-    assert sources.page_detail(page, own)["images"] == []
+    assert not sources.page_detail(page, own)["images"]
 
 
 RECORDS = [
