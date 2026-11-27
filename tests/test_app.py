@@ -202,8 +202,9 @@ def test_a_renamed_listing_is_judged_again_before_it_is_shown(env):
     sweep.run(db, s)
     state["shop"] = ["1", "2", item("4", "Dragon in a new pose")]
     state["model"] = {"Dragon in a new pose": None}
-    sweep.run(db, s)
+    run_id = sweep.run(db, s)
     assert "Dragon" not in client.get("/new").text
+    assert db.one("SELECT alerts FROM runs WHERE id = ?", run_id)["alerts"].startswith("failed")
     state["model"] = {"Dragon in a new pose": (True, 0, "")}
     sweep.run(db, s)
     assert "Dragon" not in client.get("/new").text
@@ -285,6 +286,22 @@ def test_an_answer_that_is_not_a_verdict_is_asked_again(env):
     assert model.calls == 2  # the good answer came from the cache the third time
 
 
+def test_a_photo_the_model_did_not_answer_for_is_not_judged_on_the_title(env):
+    _, db, _ = env
+    model = FakeModel([None])
+    assert ASK(db, model, PROFILE, "Turtle", "Shop", [], b"photo") is None
+    assert model.calls == 1
+
+
+def test_facts_that_are_not_what_was_asked_for_are_asked_again(env):
+    _, db, _ = env
+    good = dict.fromkeys(judge.FACT_KEYS, "") | {"scale": "1/6"}
+    model = FakeModel([{"scale": ["1/6"]}, good])
+    assert judge.facts(db, model, "Scale 1/6") is None
+    assert judge.facts(db, model, "Scale 1/6") == {"scale": "1/6"}
+    assert judge.facts(db, model, "Scale 1/6") == {"scale": "1/6"} and model.calls == 2
+
+
 def test_a_listing_page_is_read_again_until_it_is_whole(env, monkeypatch):
     from PIL import Image
 
@@ -353,6 +370,13 @@ def test_a_shop_description_is_kept_as_text_only():
     }
     got = sources.page_detail(page, coded, "https://s.example/x/AB-1.html?q=1")
     assert got["images"] == ["https://s.example/images/AB-1/a.jpg"]
+    # a product page that also shows other products: only this product's photos are kept
+    own = sources.Shop("S", "page", "https://s.example", img_match="/p/", own=r"/p/(\d+)/")
+    page = {"images": ["https://s.example/p/7/a.jpg", "https://s.example/p/8/b.jpg"]}
+    page["og"] = "https://s.example/p/9/other.jpg"
+    got = sources.page_detail(page, own, image="https://s.example/p/7/small.jpg")
+    assert got["images"] == ["https://s.example/p/7/a.jpg"]
+    assert sources.page_detail(page, own)["images"] == []
 
 
 RECORDS = [

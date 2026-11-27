@@ -85,17 +85,15 @@ def listing(
     tags: list[str],
     photo: bytes | None,
 ) -> tuple[bool, int, str] | None:
-    """Judge one listing. Asked with its photo; when that gets no answer (a photo the model
-    cannot read), asked once more on the text alone."""
+    """Judge one listing, with its photo when it has one. A listing whose photo got no
+    answer is not judged on its title instead: the photo is what would be shown, so it stays
+    unjudged and is asked about again."""
     taste = {k: prof[k] for k in ("franchises", "studios", "characters", "never", "notes")}
     prompt = JUDGE.format(
         profile=json.dumps(taste, ensure_ascii=False),
         listing=json.dumps({"name": name, "shop": shop, "tags": tags}, ensure_ascii=False),
     )
-    got = _ask(db, model, prompt, [photo]) if photo else None
-    if got is None:
-        got = _ask(db, model, prompt, None)
-    return got
+    return _ask(db, model, prompt, [photo] if photo else None)
 
 
 def _ask(db: DB, model: LLM, prompt: str, photos: list | None) -> tuple[bool, int, str] | None:
@@ -116,7 +114,13 @@ def facts(db: DB, model: LLM, text: str) -> dict[str, str] | None:
     when the model was asked and did not answer (worth another try)."""
     if not text.strip() or not model.on:
         return {}
-    answer = llm_cache.ask(db, model, FACTS.format(text=text[:6000]), None, 500)
-    if not isinstance(answer, dict):
+    prompt = FACTS.format(text=text[:6000])
+    answer = llm_cache.ask(db, model, prompt, None, 500)
+    if answer is None:
         return None
-    return {k: str(answer.get(k) or "")[:200] for k in FACT_KEYS if answer.get(k)}
+    shaped = answer and set(answer) <= set(FACT_KEYS)
+    if not shaped or not all(isinstance(v, str) for v in answer.values()):
+        # Not what was asked for: forget it, so the question is asked again.
+        db.run("DELETE FROM llm_cache WHERE key = ?", llm_cache.key(model.model, prompt, None))
+        return None
+    return {k: answer[k][:200] for k in FACT_KEYS if answer.get(k, "").strip()}

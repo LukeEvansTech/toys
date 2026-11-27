@@ -36,6 +36,9 @@ class Shop:
     # Which photos on a product's own page are the product; ``img_match`` when not given.
     # ``{slug}`` stands for the last part of the product's link (its code, at some shops).
     detail_match: str = ""
+    # A pattern whose group names the product in a photo's link. Where a product page also
+    # shows other products, only photos naming the same product as the listing's own are kept.
+    own: str = ""
 
 
 SHOPS = [
@@ -48,6 +51,7 @@ SHOPS = [
         "https://www.fanaticanimestore.com/shop-all/?sort=newest",
         img_match=r"/products/",
         img_sub=(r"/stencil/\d+w/", "/stencil/1280x1280/"),
+        own=r"/products/(\d+)/",
     ),
     Shop("Tsume", "page", "https://tsume-art.com/en/shop", href_match=r"/en/shop/[a-z0-9-]+-\d+$"),
     Shop(
@@ -103,21 +107,22 @@ def woo_detail(product: dict) -> dict:
     }
 
 
-def page_detail(data: dict, shop: Shop, url: str = "") -> dict:
+def page_detail(data: dict, shop: Shop, url: str = "", image: str = "") -> dict:
     images = [u for u in data.get("images") or [] if isinstance(u, str)]
     slug = re.sub(r"\.html?$", "", url.split("?")[0].rstrip("/").rsplit("/", 1)[-1])
     match = (shop.detail_match or shop.img_match).replace("{slug}", re.escape(slug))
-    if match:
-        images = [u for u in images if re.search(match, u)]
-    else:
-        images = []
+    images = [u for u in images if re.search(match, u)] if match else []
+    if isinstance(data.get("og"), str) and data["og"]:
+        images.insert(0, data["og"])
+    if shop.own:
+        mine = re.search(shop.own, image)
+        images = [u for u in images if mine and (m := re.search(shop.own, u)) and m[1] == mine[1]]
     if shop.img_sub:
         images = [re.sub(shop.img_sub[0], shop.img_sub[1], u) for u in images]
-    og = data.get("og") if isinstance(data.get("og"), str) else ""
-    return {"images": _web([og] + images if og else images), "text": str(data.get("text", ""))}
+    return {"images": _web(images), "text": str(data.get("text", ""))}
 
 
-def detail(source: str, key: str, url: str) -> dict:
+def detail(source: str, key: str, url: str, image: str = "") -> dict:
     """Every photo and the description of one listing: ``{"images": [...], "text": "..."}``.
     Raises when the shop cannot be read; the caller keeps the listing as it was."""
     shop = BY_NAME.get(source)
@@ -136,7 +141,9 @@ def detail(source: str, key: str, url: str) -> dict:
             check=False,
         )
         try:
-            return page_detail(json.loads(json.loads(r.stdout)["results"][0]["eval"]), shop, url)
+            return page_detail(
+                json.loads(json.loads(r.stdout)["results"][0]["eval"]), shop, url, image
+            )
         except (KeyError, IndexError, TypeError, ValueError):
             if attempt == 2:
                 raise collect.CollectError("the product page could not be read") from None

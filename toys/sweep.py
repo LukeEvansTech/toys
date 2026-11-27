@@ -85,6 +85,14 @@ def store(db: DB, items: list[collect.Item]) -> None:
                 for i in items
             ],
         )
+        # A shop can rename a listing after it was judged. In the same write, a verdict given
+        # for another title or other tags stops counting: the listing is not shown again
+        # until the model has answered for these.
+        c.executemany(
+            "UPDATE listings SET judged = NULL, liked = NULL WHERE source = ? AND key = ?"
+            " AND judged_as != '' AND judged_as != ? AND dropped = 0",
+            [(i.source, i.key, sig(i.name, i.tags)) for i in items],
+        )
 
 
 def row(db: DB, i: collect.Item) -> dict:
@@ -111,7 +119,7 @@ def fill_detail(db: DB, s: Settings, model: LLM, listing: dict) -> dict:
     if old and (old.get("complete", True) or old.get("tries", 0) >= MAX_DETAIL_TRIES):
         return old
     try:
-        got = sources.detail(listing["source"], listing["key"], listing["url"])
+        got = sources.detail(listing["source"], listing["key"], listing["url"], listing["image"])
     except Exception as e:  # pylint: disable=broad-exception-caught
         log.warning("detail for listing %s failed: %s", listing["id"], type(e).__name__)
         return old
@@ -207,10 +215,14 @@ def record(db: DB, listing_id: int, i: collect.Item, got: tuple[bool, int, str])
     )
 
 
-def recheck(db: DB, s: Settings, model: LLM, prof: dict, known: list[collect.Item], budget: int):
-    """A shop can rename a listing after it was judged. One whose title or tags changed is
-    judged again, and is not shown until the model has answered for the new ones. A listing
-    already dropped stays dropped."""
+def recheck(
+    db: DB, s: Settings, model: LLM, prof: dict, known: list[collect.Item], budget: int
+) -> tuple[int, int]:
+    """Judge again the listings whose title or tags changed since their verdict (``store``
+    has already hidden them). A listing already dropped stays dropped. Returns how many the
+    model answered for and how many it did not; one with no answer stays hidden and is asked
+    about again next sweep."""
+    answered = unanswered = 0
     for i in known:
         r = row(db, i)
         if not r or not r["judged_as"] or r["dropped"] or r["judged_as"] == sig(i.name, i.tags):
@@ -218,14 +230,16 @@ def recheck(db: DB, s: Settings, model: LLM, prof: dict, known: list[collect.Ite
         if profile.score(i.name, i.tags, i.url, prof)[0] < 0:
             record(db, r["id"], i, (True, 0, "hidden by a keyword"))
             continue
-        got = None
-        if budget > 0:
-            budget -= 1
-            got, _ = ask(db, s, model, prof, r, i)
+        if budget <= 0:
+            continue
+        budget -= 1
+        got, _ = ask(db, s, model, prof, r, i)
         if got is None:
-            db.run("UPDATE listings SET judged = NULL, liked = NULL WHERE id = ?", r["id"])
+            unanswered += 1
         else:
+            answered += 1
             record(db, r["id"], i, got)
+    return answered, unanswered
 
 
 def notes_for(sorted_: dict) -> list[str]:
@@ -366,11 +380,12 @@ def _run(db: DB, s: Settings, trigger: str, notify_on: bool, sample: int) -> int
             read[got.name] = [i.key for i in got.items]
         prof = profile.load(db)
         sorted_ = judge_new(db, s, model, prof, new)
+        again = (0, 0)
         if not sample:
-            recheck(db, s, model, prof, known, s.judge_cap - sorted_["asked"])
+            again = recheck(db, s, model, prof, known, s.judge_cap - sorted_["asked"])
         if sorted_["picks"] or sorted_["rest"]:
             result = deliver(db, s, run_id, sorted_, notify_on)
-        elif sorted_["unanswered"] and not sorted_["answered"]:
+        elif (sorted_["unanswered"] or again[1]) and not (sorted_["answered"] or again[0]):
             result = "failed: the model did not answer"
         else:
             result = heartbeat(db, s, run_id, notes_for(sorted_)) if notify_on else "nothing new"
