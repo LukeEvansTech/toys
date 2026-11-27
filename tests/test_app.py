@@ -371,8 +371,11 @@ def test_a_page_photo_is_shown_only_once_the_model_has_cleared_it(page):
     client = TestClient(create_app(s, db))
     assert client.get(f"/listing/{listing()['id']}").status_code == 200  # no model: none shown
     assert listing()["dropped"] == 0
+    db.put(sweep.LAST_MAIL, {"subject": "x", "html": "Item 3", "at": "", "sent": True})
     assert sweep.fill_detail(db, s, FakeModel([{"drop": True}]), listing()) == {"dropped": True}
     assert listing()["dropped"] == 1
+    assert client.get("/mail").status_code == 404  # the saved mail may have shown it
+    assert client.get("/").status_code == 200
     db.run("DELETE FROM seen WHERE key = '3'")  # as if its mail had failed and it were owed
     sweep.run(db, s)
     assert listing()["dropped"] == 1  # the page's verdict stands

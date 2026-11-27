@@ -161,6 +161,7 @@ def fill_detail(db: DB, s: Settings, model: LLM, listing: dict) -> dict:
             PAGE_DROP,
             listing["id"],
         )
+        db.put(LAST_MAIL, None)  # the saved copy of the last mail may show it
         return {"dropped": True}
     facts = judge.facts(db, model, got["text"])
     detail = {
