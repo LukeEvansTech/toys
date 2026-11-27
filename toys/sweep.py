@@ -95,6 +95,23 @@ def store(db: DB, items: list[collect.Item]) -> None:
         )
 
 
+def pending(db: DB, source: str, showing: set[str]) -> list[collect.Item]:
+    """Listings still owed a verdict or a mail that the shop no longer shows on the page
+    read: held over a cap, unanswered, or in a mail that failed, and since pushed off it."""
+    rows = db.all(
+        "SELECT * FROM listings l WHERE l.source = ? AND NOT EXISTS (SELECT 1 FROM seen x"
+        " WHERE x.source = l.source AND x.key = l.key)",
+        source,
+    )
+    return [
+        collect.Item(
+            r["key"], r["name"], r["url"], r["price"], r["image"], json.loads(r["tags"]), source
+        )
+        for r in rows
+        if r["key"] not in showing
+    ]
+
+
 def row(db: DB, i: collect.Item) -> dict:
     r = db.one("SELECT * FROM listings WHERE source = ? AND key = ?", i.source, i.key)
     return dict(r) if r else {}
@@ -112,9 +129,10 @@ def photo(db: DB, s: Settings, listing: dict) -> str:
 
 def fill_detail(db: DB, s: Settings, model: LLM, listing: dict) -> dict:
     """Fetch a listing's own page: every photo at full size, the description, and the facts
-    in it. Kept once it is whole; a read that missed a photo or got no answer about the facts
-    is tried again on a later view, a few times. Returns what there is, {} when nothing.
-    """
+    in it. The listing's verdict covered its first photo only, so the page's photos are shown
+    once the model has cleared them, and one that is not clear drops the whole listing
+    (``{"dropped": True}``). Kept once it is whole; a read that missed a photo or an answer
+    is tried again on a later view, a few times. Returns what there is, {} when nothing."""
     old = json.loads(listing["detail"]) if listing["detail"] else {}
     if old and (old.get("complete", True) or old.get("tries", 0) >= MAX_DETAIL_TRIES):
         return old
@@ -123,28 +141,36 @@ def fill_detail(db: DB, s: Settings, model: LLM, listing: dict) -> dict:
     except Exception as e:  # pylint: disable=broad-exception-caught
         log.warning("detail for listing %s failed: %s", listing["id"], type(e).__name__)
         return old
-    photos, missed = [], 0
+    files, missed = [], 0
     for url in got["images"]:
         try:
-            photos.append(full(images.fetch(url, listing["url"]), s.img_dir))
+            files.append(full(images.fetch(url, listing["url"]), s.img_dir))
         except Exception as e:  # pylint: disable=broad-exception-caught
             missed += 1
             log.warning("detail photo failed: %s", type(e).__name__)
-    photos = list(dict.fromkeys(photos))
+    cleared = old.get("photos", [])
+    fresh = [f for f in dict.fromkeys(files) if f not in cleared]
+    clear: bool | None = True
+    if fresh:
+        shots = [images.as_jpeg((s.img_dir / f).read_bytes(), 768) for f in fresh]
+        clear = judge.gallery(db, model, listing["name"], [x for x in shots if x])
+    if clear is False:
+        db.run(
+            "UPDATE listings SET dropped = 1, reason = 'hidden: a photo on its page',"
+            " detail = '' WHERE id = ?",
+            listing["id"],
+        )
+        return {"dropped": True}
     facts = judge.facts(db, model, got["text"])
     detail = {
-        "photos": (photos if len(photos) >= len(old.get("photos", [])) else old["photos"]),
+        "photos": cleared + fresh if clear else cleared,
         "text": got["text"] or old.get("text", ""),
         "facts": facts or old.get("facts", {}),
-        "complete": not missed and facts is not None,
+        "complete": not missed and clear is True and facts is not None,
         "tries": old.get("tries", 0) + 1,
     }
     if detail["photos"] or detail["text"]:
-        db.run(
-            "UPDATE listings SET detail = ? WHERE id = ?",
-            json.dumps(detail),
-            listing["id"],
-        )
+        db.run("UPDATE listings SET detail = ? WHERE id = ?", json.dumps(detail), listing["id"])
     return detail
 
 
@@ -196,8 +222,11 @@ def judge_new(db: DB, s: Settings, model: LLM, prof: dict, new: list[collect.Ite
 
 
 def ask(db: DB, s: Settings, model: LLM, prof: dict, r: dict, i: collect.Item):
-    """(the model's verdict or None, the stored photo's name)."""
+    """(the model's verdict or None, the stored photo's name). A listing that has a photo
+    the app could not fetch gets no verdict: it would be one on the title alone."""
     name = photo(db, s, r)
+    if r["image"] and not name:
+        return None, ""
     jpeg = images.as_jpeg((s.img_dir / name).read_bytes(), 768) if name else None
     return judge.listing(db, model, prof, i.name, i.source, i.tags, jpeg), name
 
@@ -378,6 +407,10 @@ def _run(db: DB, s: Settings, trigger: str, notify_on: bool, sample: int) -> int
             new += got.items[:sample] if sample else [i for i in got.items if i.key in fresh]
             known += [i for i in got.items if i.key not in fresh]
             read[got.name] = [i.key for i in got.items]
+            if not sample and seen.baselined(db, got.name):
+                owed = pending(db, got.name, set(read[got.name]))
+                new += owed
+                read[got.name] += [i.key for i in owed]
         prof = profile.load(db)
         sorted_ = judge_new(db, s, model, prof, new)
         again = (0, 0)

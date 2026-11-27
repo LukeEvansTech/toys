@@ -302,25 +302,28 @@ def test_facts_that_are_not_what_was_asked_for_are_asked_again(env):
     assert judge.facts(db, model, "Scale 1/6") == {"scale": "1/6"} and model.calls == 2
 
 
-def test_a_listing_page_is_read_again_until_it_is_whole(env, monkeypatch):
-    from PIL import Image
+def picture(colour):
+    from PIL import Image  # pylint: disable=import-outside-toplevel
 
-    s, db, state = env
     buf = io.BytesIO()
-    Image.new("RGB", (2000, 1000), "white").save(buf, "PNG")
+    Image.new("RGB", (2000, 1000), colour).save(buf, "PNG")
+    return buf.getvalue()
+
+
+@pytest.fixture
+def page(env, monkeypatch):
+    """One mailed listing whose own page has two photos; ``reads`` counts the page reads."""
+    s, db, state = env
     reads = []
 
     def detail(*_):
         reads.append(1)
-        return {
-            "images": ["https://shop.example/a.png", "https://shop.example/b.png"],
-            "text": "",
-        }
+        return {"images": ["https://shop.example/a.png", "https://shop.example/b.png"], "text": ""}
 
     def fetch(url, *_):
-        if url.endswith("b.png") and len(reads) == 1:
+        if url.endswith("b.png") and state.get("b down"):
             raise TimeoutError
-        return buf.getvalue()
+        return picture("white" if url.endswith("a.png") else "grey")
 
     monkeypatch.setattr(sweep.sources, "detail", detail)
     monkeypatch.setattr(sweep.images, "fetch", fetch)
@@ -331,14 +334,59 @@ def test_a_listing_page_is_read_again_until_it_is_whole(env, monkeypatch):
     def listing():
         return dict(db.one("SELECT * FROM listings WHERE key = '3'"))
 
-    first = sweep.fill_detail(db, s, FakeModel([]), listing())
+    return s, db, state, reads, listing
+
+
+def test_a_listing_page_is_read_again_until_it_is_whole(page):
+    from PIL import Image  # pylint: disable=import-outside-toplevel
+
+    s, db, state, reads, listing = page
+    state["b down"] = True
+    model = FakeModel([{"drop": False}, {"drop": False}])
+    first = sweep.fill_detail(db, s, model, listing())
     assert first["complete"] is False and len(first["photos"]) == 1
-    again = sweep.fill_detail(db, s, FakeModel([]), listing())
-    assert again["complete"] is True and len(reads) == 2
-    sweep.fill_detail(db, s, FakeModel([]), listing())
-    assert len(reads) == 2  # whole: not read again
+    state["b down"] = False
+    again = sweep.fill_detail(db, s, model, listing())
+    assert again["complete"] is True and len(again["photos"]) == 2 and len(reads) == 2
+    sweep.fill_detail(db, s, model, listing())
+    assert len(reads) == 2 and model.calls == 2  # whole: not read or asked about again
     with Image.open(s.img_dir / again["photos"][0]) as big:
         assert max(big.size) == 1600  # the page's copy, not the mail's small one
+
+
+def test_a_page_photo_is_shown_only_once_the_model_has_cleared_it(page):
+    s, db, _, _, listing = page
+    held = sweep.fill_detail(db, s, FakeModel([None]), listing())
+    assert held["photos"] == [] and held["complete"] is False
+    client = TestClient(create_app(s, db))
+    assert client.get(f"/listing/{listing()['id']}").status_code == 200  # no model: none shown
+    assert listing()["dropped"] == 0
+    assert sweep.fill_detail(db, s, FakeModel([{"drop": True}]), listing()) == {"dropped": True}
+    assert listing()["dropped"] == 1
+    assert client.get(f"/listing/{listing()['id']}").status_code == 404
+    assert "Item 3" not in client.get("/new").text
+
+
+def test_a_listing_whose_photo_could_not_be_fetched_is_held(env):
+    s, db, state = env
+    sweep.run(db, s)
+    wanted = collect.Item(
+        "3", "Turtle", "https://shop.example/3", image="https://shop.example/3.jpg"
+    )
+    state["shop"] = ["1", "2", wanted]
+    sweep.run(db, s)
+    assert state["sent"] == [] and state["asked"] == []  # not judged on its title
+
+
+def test_a_listing_owed_a_mail_is_kept_after_the_shop_stops_showing_it(env):
+    s, db, state = env
+    sweep.run(db, s)
+    state["shop"], state["mail"] = ["1", "2", "3"], "failed: relay down"
+    sweep.run(db, s)
+    state["shop"], state["mail"] = ["1", "2"], "sent"  # pushed off the page read
+    sweep.run(db, s)
+    sweep.run(db, s)
+    assert subjects(state) == ["Toys: 1 for you, 0 other new"]
 
 
 def test_a_shop_description_is_kept_as_text_only():

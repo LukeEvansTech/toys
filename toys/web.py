@@ -133,6 +133,8 @@ def create_app(s: Settings, opened: DB | None = None, start_scheduler: bool = Fa
             raise HTTPException(404)
         c = s.common
         detail = sweep.fill_detail(db, s, LLM(c.llm_url, c.llm_key, c.llm_model), dict(r))
+        if detail.get("dropped"):  # a photo on its own page was not clear
+            raise HTTPException(404)
         photos = detail.get("photos") or ([r["photo"]] if r["photo"] else [])
         facts = [(FACT_LABELS[k], v) for k, v in (detail.get("facts") or {}).items()]
         return page(
