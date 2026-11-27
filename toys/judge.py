@@ -26,11 +26,10 @@ Decide:
 - drop: true if the statue is sexualised in any way (R18, NSFW, 18+, cast-off, lingerie,
   swimsuit, bunny suit, emphasised breasts or underwear, a "sexy" pose), judging from the photo
   as well as the title. When unsure, true. Also true if it is not a statue or figure (a base,
-  an accessory, a deposit or shipping line).
+  an accessory, a deposit or shipping line), or if it is a character on his "never" list.
 - like: 0 = not for him; 1 = a franchise he collects but not a character he collects;
   2 = a character or subject he collects; 3 = a character he collects from a studio he buys
-  from, or closely related to pieces he owns. A character on his "never" list is 0. A franchise
-  he does not collect is 0.
+  from, or closely related to pieces he owns. A franchise he does not collect is 0.
 - reason: under 12 words, naming the character or subject and why it does or does not fit.
   Write it as a note to him: no "he", "his" or "the collector".
 
@@ -142,9 +141,8 @@ def facts(db: DB, model: LLM, text: str) -> dict[str, str] | None:
     answer = llm_cache.ask(db, model, prompt, None, 500)
     if answer is None:
         return None
-    shaped = answer and set(answer) <= set(FACT_KEYS)
-    if not shaped or not all(isinstance(v, str) for v in answer.values()):
+    if set(answer) != set(FACT_KEYS) or not all(isinstance(v, str) for v in answer.values()):
         # Not what was asked for: forget it, so the question is asked again.
         db.run("DELETE FROM llm_cache WHERE key = ?", llm_cache.key(model.model, prompt, None))
         return None
-    return {k: answer[k][:200] for k in FACT_KEYS if answer.get(k, "").strip()}
+    return {k: answer[k][:200] for k in FACT_KEYS if answer[k].strip()}

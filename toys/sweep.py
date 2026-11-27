@@ -189,6 +189,9 @@ def judge_new(db: DB, s: Settings, model: LLM, prof: dict, new: list[collect.Ite
     out.update(answered=0, asked=0)
     for i in new:
         r = row(db, i)
+        if r["dropped"]:  # held over from an earlier sweep and dropped since, by its own page
+            out["hidden"] += 1
+            continue
         if profile.score(i.name, i.tags, i.url, prof)[0] < 0:
             record(db, r["id"], i, (True, 0, "hidden by a keyword"))
             out["hidden"] += 1
@@ -429,7 +432,10 @@ def _run(db: DB, s: Settings, trigger: str, notify_on: bool, sample: int) -> int
             if sample:
                 break
             if not seen.baselined(db, name):
-                seen.commit(db, name, keys)
+                # Everything stored for the shop so far, a preview's listings included: none
+                # of it is news.
+                stored = db.all("SELECT key FROM listings WHERE source = ?", name)
+                seen.commit(db, name, keys + [r["key"] for r in stored])
             elif result in ("sent", "nothing new") or result.startswith("failed: the model"):
                 # What was mailed, hidden or already known is done with; what is held is not.
                 seen.commit(db, name, [k for k in keys if k not in held.get(name, set())])

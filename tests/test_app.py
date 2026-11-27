@@ -219,6 +219,9 @@ def test_a_sample_marks_nothing_and_sends_nothing(env):
     assert db.get(sweep.LAST_MAIL, None)["sent"] is False
     sweep.run(db, s)  # still the baseline
     assert state["sent"] == []
+    state["shop"] = ["2"]  # the sampled listing has gone from the shop's page
+    sweep.run(db, s)
+    assert state["sent"] == []  # and is not announced later as if it were new
 
 
 def test_the_rules_score_characters_not_franchises():
@@ -363,6 +366,9 @@ def test_a_page_photo_is_shown_only_once_the_model_has_cleared_it(page):
     assert listing()["dropped"] == 0
     assert sweep.fill_detail(db, s, FakeModel([{"drop": True}]), listing()) == {"dropped": True}
     assert listing()["dropped"] == 1
+    db.run("DELETE FROM seen WHERE key = '3'")  # as if its mail had failed and it were owed
+    sweep.run(db, s)
+    assert listing()["dropped"] == 1  # the page's verdict stands
     assert client.get(f"/listing/{listing()['id']}").status_code == 404
     assert "Item 3" not in client.get("/new").text
 
