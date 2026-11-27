@@ -4,6 +4,7 @@ whole; the app's database is the only copy the cluster holds."""
 from __future__ import annotations
 
 import json
+import math
 
 from collectorkit.db import DB
 
@@ -26,9 +27,10 @@ def group(state: str) -> str:
 
 def _num(v) -> float | None:
     try:
-        return None if v is None or v == "" else float(v)
+        n = None if v is None or v == "" else float(v)
     except (TypeError, ValueError):
         return None
+    return n if n is not None and math.isfinite(n) else None  # "Infinity" is not a price
 
 
 def _text(v) -> str:

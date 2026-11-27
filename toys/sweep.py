@@ -171,8 +171,8 @@ def fill_detail(db: DB, s: Settings, model: LLM, listing: dict) -> dict:
         "complete": bool(files) and not missed and clear is True and facts is not None,
         "tries": old.get("tries", 0) + 1,
     }
-    if detail["photos"] or detail["text"]:
-        db.run("UPDATE listings SET detail = ? WHERE id = ?", json.dumps(detail), listing["id"])
+    # Stored even when empty, so the count of tries is kept and the retries end.
+    db.run("UPDATE listings SET detail = ? WHERE id = ?", json.dumps(detail), listing["id"])
     return detail
 
 
@@ -202,8 +202,9 @@ def judge_new(db: DB, s: Settings, model: LLM, prof: dict, new: list[collect.Ite
             out["held"].append((i.source, i.key))
             out["over"] += 1
             continue
-        out["asked"] += 1
         got, name = ask(db, s, model, prof, r, i)
+        # A photo that would not download cost no model call, so it uses none of the cap.
+        out["asked"] += not (got is None and r["image"] and not name)
         if got is None:
             out["held"].append((i.source, i.key))
             out["unanswered"] += 1

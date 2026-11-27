@@ -391,6 +391,24 @@ def test_a_listing_whose_photo_could_not_be_fetched_is_held(env):
     assert state["sent"] == [] and state["asked"] == []  # not judged on its title
 
 
+def test_a_photo_that_will_not_download_uses_none_of_the_cap(env, monkeypatch):
+    s, db, state = env
+    monkeypatch.setenv("TOYS_JUDGE_CAP", "1")
+    s = config.load()
+    sweep.run(db, s)
+    stuck = collect.Item(
+        "3", "Turtle", "https://shop.example/3", image="https://shop.example/3.jpg"
+    )
+    state["shop"] = ["1", "2", stuck, "4"]
+    sweep.run(db, s)
+    assert state["asked"] == ["Item 4"]  # the one behind it is still judged
+
+
+def test_a_price_that_is_not_a_number_is_no_price():
+    num = collection._num  # pylint: disable=protected-access
+    assert num("Infinity") is None and num(1e999) is None and num("12.5") == 12.5
+
+
 def test_a_listing_owed_a_mail_is_kept_after_the_shop_stops_showing_it(env):
     s, db, state = env
     sweep.run(db, s)
