@@ -33,6 +33,7 @@ ENV = Environment(
 )
 MAX_PICKS, MAX_REST = 20, 40
 MAX_DETAIL_TRIES = 3
+PAGE_DROP = "hidden: a photo on its page"
 HEARTBEAT = "heartbeat_week"
 LAST_MAIL = "last_mail"
 
@@ -156,8 +157,8 @@ def fill_detail(db: DB, s: Settings, model: LLM, listing: dict) -> dict:
         clear = judge.gallery(db, model, listing["name"], [x for x in shots if x])
     if clear is False:
         db.run(
-            "UPDATE listings SET dropped = 1, reason = 'hidden: a photo on its page',"
-            " detail = '' WHERE id = ?",
+            "UPDATE listings SET dropped = 1, reason = ?, detail = '' WHERE id = ?",
+            PAGE_DROP,
             listing["id"],
         )
         return {"dropped": True}
@@ -166,7 +167,8 @@ def fill_detail(db: DB, s: Settings, model: LLM, listing: dict) -> dict:
         "photos": cleared + fresh if clear else cleared,
         "text": got["text"] or old.get("text", ""),
         "facts": facts or old.get("facts", {}),
-        "complete": not missed and clear is True and facts is not None,
+        # A page with no photo of the product is a page that did not load as one.
+        "complete": bool(files) and not missed and clear is True and facts is not None,
         "tries": old.get("tries", 0) + 1,
     }
     if detail["photos"] or detail["text"]:
@@ -237,13 +239,14 @@ def ask(db: DB, s: Settings, model: LLM, prof: dict, r: dict, i: collect.Item):
 def record(db: DB, listing_id: int, i: collect.Item, got: tuple[bool, int, str]) -> None:
     db.run(
         "UPDATE listings SET dropped = ?, liked = ?, reason = ?, judged = ?, judged_as = ?"
-        " WHERE id = ?",
+        " WHERE id = ? AND reason != ?",
         int(got[0]),
         got[1],
         got[2],
         runs.now(),
         sig(i.name, i.tags),
         listing_id,
+        PAGE_DROP,  # a drop by the listing's own page outlasts any verdict on its first photo
     )
 
 
@@ -257,7 +260,9 @@ def recheck(
     answered = unanswered = 0
     for i in known:
         r = row(db, i)
-        if not r or not r["judged_as"] or r["dropped"] or r["judged_as"] == sig(i.name, i.tags):
+        if not r or not r["judged_as"] or r["dropped"]:
+            continue
+        if r["judged"] and r["judged_as"] == sig(i.name, i.tags):
             continue
         if profile.score(i.name, i.tags, i.url, prof)[0] < 0:
             record(db, r["id"], i, (True, 0, "hidden by a keyword"))
@@ -316,7 +321,12 @@ def render(s: Settings, picks: list, rest: list, cover: list, notes: list, subje
 def deliver(db: DB, s: Settings, run_id: int, sorted_: dict, send: bool) -> str:
     """Mail the picks and the rest; 'sent', 'off' or 'failed: <reason>'."""
     c = s.common
-    picks, rest = sorted_["picks"], sorted_["rest"]
+    # A listing's own page may have dropped it while this sweep was judging.
+    gone = {r["id"] for r in db.all("SELECT id FROM listings WHERE dropped = 1")}
+    picks = [r for r in sorted_["picks"] if r["id"] not in gone]
+    rest = [r for r in sorted_["rest"] if r["id"] not in gone]
+    if not picks and not rest:
+        return "nothing new"
     day = today(c.timezone)
     subject = f"Toys: {len(picks)} for you, {len(rest)} other new ({day:%d %b})"
     html, text, photos, web = render(

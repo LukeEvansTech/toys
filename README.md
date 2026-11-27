@@ -8,8 +8,8 @@ My statue and garage-kit collection, and a daily watch for new listings I might 
 - **New**: listings the shops added, judged against my likes by a model. A daily email carries
   the picks with photos and a coverage line per shop; a day with nothing to show is silent, and
   a Monday with nothing says the watch still runs.
-- **A page per listing**: every photo the shop has, at full size, with the scale, size, deposit
-  and release date its description states.
+- **A page per listing**: the shop's photos (up to 12, at up to 1600 pixels), with the scale,
+  size, deposit and release date its description states.
 - **Likes**: the characters I collect per franchise and the ones I never want, edited in the app.
 
 Nothing sexualised is shown or mailed. Shops label some of it, so a keyword list hides those
