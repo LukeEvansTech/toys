@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl git \
 
 # The shops without a product feed are rendered by obscura. Pinned by version and checksum;
 # the release is x86_64, as the cluster is.
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ARG OBSCURA_VERSION=0.2.7
 ARG OBSCURA_SHA256=11b53d27cd743e00e196e216920e7f3f794cf378e3f1792b8d25d3beabaf9cad
 RUN curl -fsSL -o /tmp/obscura.tgz \

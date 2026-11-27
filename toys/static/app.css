@@ -335,6 +335,7 @@ main {
   font-size: 11px;
   color: var(--ink-2);
 }
+
 .empty {
   border: 1px solid var(--rule);
   padding: 22px 18px;
@@ -404,6 +405,7 @@ button:disabled {
   opacity: 0.55;
   cursor: progress;
 }
+
 .facts {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

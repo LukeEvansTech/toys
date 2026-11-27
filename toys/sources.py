@@ -14,7 +14,13 @@ import subprocess  # nosec B404
 from dataclasses import dataclass
 from typing import Callable
 
-from collectorkit import collect
+from collectorkit import collect, images
+
+# Say who is asking. A shop that refuses a client pretending to be a browser answers one that
+# names itself, and a shop that refuses this one is not read at all.
+UA = "toys/1 (+https://github.com/LukeEvansTech/toys)"
+collect.UA = UA
+images.UA = UA
 
 Job = tuple[str, Callable[[], list[collect.Item]]]
 
