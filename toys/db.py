@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS listings (
     dropped INTEGER NOT NULL DEFAULT 0,
     reason TEXT NOT NULL DEFAULT '',
     judged TEXT,
+    -- The title and tags the verdict was given for; a renamed listing is judged again.
+    judged_as TEXT NOT NULL DEFAULT '',
     mailed TEXT,
     photo TEXT NOT NULL DEFAULT '',
     detail TEXT NOT NULL DEFAULT '',

@@ -54,7 +54,16 @@ Reply with only a JSON object with exactly those eight keys, every value a strin
 
 {text}"""
 
-FACT_KEYS = ("scale", "size", "edition", "material", "studio", "deposit", "balance", "release")
+FACT_KEYS = (
+    "scale",
+    "size",
+    "edition",
+    "material",
+    "studio",
+    "deposit",
+    "balance",
+    "release",
+)
 
 
 def verdict(answer: dict | None) -> tuple[bool, int, str] | None:
@@ -68,7 +77,13 @@ def verdict(answer: dict | None) -> tuple[bool, int, str] | None:
 
 
 def listing(
-    db: DB, model: LLM, prof: dict, name: str, shop: str, tags: list[str], photo: bytes | None
+    db: DB,
+    model: LLM,
+    prof: dict,
+    name: str,
+    shop: str,
+    tags: list[str],
+    photo: bytes | None,
 ) -> tuple[bool, int, str] | None:
     """Judge one listing. Asked with its photo; when that gets no answer (a photo the model
     cannot read), asked once more on the text alone."""
@@ -77,17 +92,31 @@ def listing(
         profile=json.dumps(taste, ensure_ascii=False),
         listing=json.dumps({"name": name, "shop": shop, "tags": tags}, ensure_ascii=False),
     )
-    got = verdict(llm_cache.ask(db, model, prompt, [photo], 300)) if photo else None
+    got = _ask(db, model, prompt, [photo]) if photo else None
     if got is None:
-        got = verdict(llm_cache.ask(db, model, prompt, None, 300))
+        got = _ask(db, model, prompt, None)
     return got
 
 
-def facts(db: DB, model: LLM, text: str) -> dict[str, str]:
-    """What the description states, or {} when there is none or the model did not answer."""
+def _ask(db: DB, model: LLM, prompt: str, photos: list | None) -> tuple[bool, int, str] | None:
+    answer = llm_cache.ask(db, model, prompt, photos, 300)
+    got = verdict(answer)
+    if got is None and answer is not None:
+        # JSON that is not a verdict was stored as an answer; drop it so the question is
+        # asked again, not answered wrongly from the cache for ever.
+        db.run(
+            "DELETE FROM llm_cache WHERE key = ?",
+            llm_cache.key(model.model, prompt, photos),
+        )
+    return got
+
+
+def facts(db: DB, model: LLM, text: str) -> dict[str, str] | None:
+    """What the description states; {} when there is nothing to ask or no model, and None
+    when the model was asked and did not answer (worth another try)."""
     if not text.strip() or not model.on:
         return {}
     answer = llm_cache.ask(db, model, FACTS.format(text=text[:6000]), None, 500)
     if not isinstance(answer, dict):
-        return {}
+        return None
     return {k: str(answer.get(k) or "")[:200] for k in FACT_KEYS if answer.get(k)}
