@@ -1,0 +1,274 @@
+"""The behaviours every collector keeps, and this app's own: with the shops, the model and the
+mail stubbed. Every name and number here is made up."""
+
+import json
+
+import pytest
+from collectorkit import collect, runs
+from fastapi.testclient import TestClient
+from toys import collection, config, judge, profile, sources, sweep
+from toys.db import open_db
+from toys.web import create_app
+
+PROFILE = {
+    "franchises": {"Monsters": 3},
+    "studios": {"Good Studio": 2},
+    "aliases": {"Monsters": ["monsters", "pocket monsters"]},
+    "characters": {"Monsters": ["Turtle", "Dragon"]},
+    "never": ["Villain"],
+    "notes": ["Turtle is a favourite."],
+}
+
+
+def item(key, name=None):
+    return collect.Item(key, name or f"Item {key}", f"https://shop.example/{key}", "£10.00")
+
+
+@pytest.fixture
+def env(tmp_path, monkeypatch):
+    monkeypatch.setenv("TOYS_DATA", str(tmp_path))
+    monkeypatch.setenv("TOYS_PUBLIC_URL", "https://toys.example.test")
+    monkeypatch.setenv("TOYS_SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("TOYS_MAIL_FROM", "noreply@example.test")
+    monkeypatch.setenv("TOYS_MAIL_TO", "me@example.test")
+    s = config.load()
+    # "model": a verdict per listing name, or None for no answer
+    state = {"shop": ["1", "2"], "mail": "sent", "sent": [], "model": {}, "asked": []}
+
+    def jobs():
+        def read():
+            if state["shop"] is None:
+                raise TimeoutError("shop down")
+            return [k if isinstance(k, collect.Item) else item(k) for k in state["shop"]]
+
+        return [("Shop", read)]
+
+    def send(*args):
+        if state["mail"] == "sent":
+            state["sent"].append(args[4])  # the subject
+        return state["mail"]
+
+    def listing(_db, _model, _prof, name, *_):
+        state["asked"].append(name)
+        return state["model"].get(name, (False, 2, "a character he collects"))
+
+    monkeypatch.setattr(sweep.sources, "jobs", jobs)
+    monkeypatch.setattr(sweep.mail, "send", send)
+    monkeypatch.setattr(sweep.notify, "send", lambda *a, **k: "off")
+    monkeypatch.setattr(sweep.images, "download", lambda *a, **k: "")
+    monkeypatch.setattr(sweep.judge, "listing", listing)
+    db = open_db(s.common.db_path)
+    profile.save(db, PROFILE)
+    return s, db, state
+
+
+def subjects(state):
+    return [x.split(" (")[0] for x in state["sent"]]
+
+
+def test_the_first_sweep_is_a_baseline_and_new_listings_are_mailed_once(env):
+    s, db, state = env
+    sweep.run(db, s)
+    assert state["sent"] == [] and state["asked"] == []
+    state["shop"] = ["1", "2", "3"]
+    sweep.run(db, s)
+    sweep.run(db, s)
+    assert subjects(state) == ["Toys: 1 for you, 0 other new"]
+    assert db.one("SELECT mailed FROM listings WHERE key = '3'")["mailed"]
+
+
+def test_a_failed_send_leaves_the_listing_new(env):
+    s, db, state = env
+    sweep.run(db, s)
+    state["shop"], state["mail"] = ["1", "2", "3"], "failed: SMTPConnectError"
+    run_id = sweep.run(db, s)
+    assert db.one("SELECT alerts FROM runs WHERE id = ?", run_id)["alerts"].startswith("failed")
+    state["mail"] = "sent"
+    sweep.run(db, s)
+    assert subjects(state) == ["Toys: 1 for you, 0 other new"]
+
+
+def test_a_failed_source_is_not_a_success_and_retires_nothing(env):
+    s, db, state = env
+    sweep.run(db, s)
+    before = runs.last_success(db)
+    state["shop"] = None
+    run_id = sweep.run(db, s)
+    assert db.one("SELECT status FROM runs WHERE id = ?", run_id)["status"] == "failed"
+    assert runs.coverage(db, run_id) == ["Shop: FAILED (TimeoutError)"]
+    assert runs.last_success(db) == before
+    assert db.one("SELECT COUNT(*) n FROM listings")["n"] == 2
+
+
+def test_a_dropped_or_keyword_hidden_listing_is_never_mailed_or_shown(env):
+    s, db, state = env
+    sweep.run(db, s)
+    state["shop"] = ["1", "2", item("3", "Lady statue"), item("4", "Hero NSFW ver.")]
+    state["model"] = {"Lady statue": (True, 0, "")}
+    sweep.run(db, s)
+    assert state["sent"] == []  # nothing left to show: a silent day
+    assert state["asked"] == ["Lady statue"]  # the keyword hid the other before any model call
+    client = TestClient(create_app(s, db))
+    page = client.get("/new").text
+    assert "Lady statue" not in page and "Hero NSFW" not in page
+    hidden = db.one("SELECT id FROM listings WHERE key = '3'")["id"]
+    assert client.get(f"/listing/{hidden}").status_code == 404
+    sweep.run(db, s)
+    assert state["asked"] == ["Lady statue"]  # done with: not asked about again
+
+
+def test_a_listing_the_model_did_not_answer_for_is_held_and_asked_again(env):
+    s, db, state = env
+    sweep.run(db, s)
+    state["shop"] = ["1", "2", item("3", "Turtle"), item("4", "Mystery")]
+    state["model"] = {"Mystery": None}
+    sweep.run(db, s)
+    assert subjects(state) == ["Toys: 1 for you, 0 other new"]
+    client = TestClient(create_app(s, db))
+    assert "Mystery" not in client.get("/new").text and "Mystery" not in client.get("/mail").text
+    assert "toys_unjudged_listings 1" in client.get("/metrics").text
+    state["model"] = {}
+    sweep.run(db, s)
+    assert subjects(state)[1:] == ["Toys: 1 for you, 0 other new"]
+    assert state["asked"].count("Turtle") == 1 and state["asked"].count("Mystery") == 2
+
+
+def test_a_model_that_answers_nothing_is_a_failed_delivery(env):
+    s, db, state = env
+    sweep.run(db, s)
+    ok = runs.last_success(db, runs.DELIVERED + " AND alerts NOT LIKE 'failed%'")
+    state["shop"] = ["1", "2", item("3", "Turtle")]
+    state["model"] = {"Turtle": None}
+    run_id = sweep.run(db, s)
+    assert db.one("SELECT alerts FROM runs WHERE id = ?", run_id)["alerts"].startswith("failed")
+    assert runs.last_success(db, runs.DELIVERED + " AND alerts NOT LIKE 'failed%'") == ok
+
+
+def test_listings_over_the_cap_wait_for_the_next_sweep(env, monkeypatch):
+    s, db, state = env
+    monkeypatch.setenv("TOYS_JUDGE_CAP", "1")
+    s = config.load()
+    sweep.run(db, s)
+    state["shop"] = ["1", "2", "3", "4"]
+    sweep.run(db, s)
+    sweep.run(db, s)
+    assert subjects(state) == ["Toys: 1 for you, 0 other new"] * 2
+    assert sorted(state["asked"]) == ["Item 3", "Item 4"]
+
+
+def test_a_sample_marks_nothing_and_sends_nothing(env):
+    s, db, state = env
+    sweep.run(db, s, sample=1)
+    assert state["sent"] == [] and state["asked"] == ["Item 1"]
+    assert db.get(sweep.LAST_MAIL, None)["sent"] is False
+    sweep.run(db, s)  # still the baseline
+    assert state["sent"] == []
+
+
+def test_the_rules_score_characters_not_franchises():
+    p = profile.clean(PROFILE)
+    assert profile.score("Monsters Turtle 1/6", [], "", p)[0] > 30
+    assert profile.score("Monsters Bird 1/6", [], "", p) == (
+        2,
+        ["Monsters, not a character on your list"],
+    )
+    assert profile.score("Monsters Villain", [], "", p)[0] == -1
+    assert profile.score("Turtle (sexy ver.)", [], "", p)[0] == -1
+    assert profile.score("Unrelated robot", ["Good Studio"], "", p) == (
+        7,
+        ["Good Studio (2 owned)"],
+    )
+    assert profile.lines("Turtle, Dragon\n Turtle \n") == ["Turtle", "Dragon"]
+
+
+def test_a_verdict_is_only_what_the_model_was_asked_for():
+    assert judge.verdict({"drop": False, "like": 3, "reason": "x" * 300}) == (False, 3, "x" * 120)
+    assert judge.verdict({"drop": True, "like": 0}) == (True, 0, "")
+    for bad in (None, {}, {"drop": "no", "like": 2}, {"drop": False, "like": 9}, {"like": True}):
+        assert judge.verdict(bad) is None
+
+
+def test_a_shop_description_is_kept_as_text_only():
+    got = sources.woo_detail(
+        {
+            "images": [{"src": "https://shop.example/a.jpg"}, {"src": "javascript:alert(1)"}],
+            "description": "<p>Scale: 1/6</p><script>alert(1)</script><ul><li>Height 40cm</li></ul>",
+        }
+    )
+    assert got == {"images": ["https://shop.example/a.jpg"], "text": "Scale: 1/6\nHeight 40cm"}
+    shop = sources.Shop("S", "page", "https://s.example", img_match=r"/products/")
+    page = {"images": ["https://s.example/products/1.jpg", "https://s.example/logo.png"], "og": 5}
+    assert sources.page_detail(page, shop)["images"] == ["https://s.example/products/1.jpg"]
+    coded = sources.Shop("S", "page", "https://s.example", detail_match=r"/images/{slug}/")
+    page = {
+        "images": ["https://s.example/images/AB-1/a.jpg", "https://s.example/images/CD-2/b.jpg"]
+    }
+    got = sources.page_detail(page, coded, "https://s.example/x/AB-1.html?q=1")
+    assert got["images"] == ["https://s.example/images/AB-1/a.jpg"]
+
+
+RECORDS = [
+    {"id": "T1", "item": "Turtle statue", "maker": "Good Studio", "vendor": "Shop A"}
+    | {"date": "2024-01-02", "gbp_paid": 100.5, "franchise": "Monsters", "state": "received"},
+    {"id": "T2", "item": "Dragon statue", "vendor": "Shop B", "gbp_paid": None}
+    | {"state": "chase: balance/ETA", "notes": ["asked in May"], "franchise": "Monsters"},
+    {"id": "T3", "item": "Robot", "vendor": "Shop A", "gbp_paid": 20, "state": "refunded"},
+    {"id": "T4", "item": "Folded away", "state": "merged"},
+]
+
+
+def test_the_collection_loads_as_a_whole_and_pages_show_it(env):
+    s, db, _ = env
+    assert collection.replace(db, RECORDS) == 3
+    assert collection.owned_counts(db) == {"Monsters": 2}
+    with pytest.raises(ValueError):
+        collection.replace(db, [{"id": "X"}])
+    assert len(collection.find(db)) == 3  # a refused load changes nothing
+    client = TestClient(create_app(s, db))
+    home = client.get("/").text
+    assert "Turtle statue" in home and "£120.50 paid" in home and "1 with no price" in home
+    assert "Dragon statue" in client.get("/orders").text
+    assert "Turtle statue" not in client.get("/orders").text
+    assert "Robot" not in client.get("/?show=have").text
+    assert "asked in May" in client.get("/item/T2").text
+    assert client.get("/item/T4").status_code == 404
+    up = client.post(
+        "/import",
+        data={"kind": "collection"},
+        files={"file": ("c.json", json.dumps(RECORDS[:1]), "application/json")},
+        follow_redirects=False,
+    )
+    assert up.status_code == 303 and len(collection.find(db)) == 1
+    bad = client.post("/import", data={"kind": "collection"}, files={"file": ("c.json", "{")})
+    assert bad.status_code == 400 and len(collection.find(db)) == 1
+
+
+def test_likes_are_edited_in_the_app(env):
+    s, db, _ = env
+    client = TestClient(create_app(s, db))
+    assert "Turtle, Dragon" in client.get("/profile").text
+    form = {"chars:Monsters": "Turtle\nBird", "never": "Villain, Rival", "notes": "One.\nTwo."}
+    form |= {"add_franchise": "Robots", "add_characters": "Unit One"}
+    assert client.post("/profile", data=form, follow_redirects=False).status_code == 303
+    p = profile.load(db)
+    assert p["characters"] == {"Monsters": ["Turtle", "Bird"], "Robots": ["Unit One"]}
+    assert p["never"] == ["Villain", "Rival"] and p["notes"] == ["One.", "Two."]
+    assert p["studios"] == {"Good Studio": 2}  # parts the form does not carry are kept
+
+
+def test_pages_health_and_metrics(env):
+    s, db, state = env
+    sweep.run(db, s)
+    state["shop"] = ["1", "2", "3"]
+    sweep.run(db, s)
+    client = TestClient(create_app(s, db))
+    assert "Item 3" in client.get("/new").text and "Item 1" not in client.get("/new").text
+    shown = db.one("SELECT id FROM listings WHERE key = '3'")["id"]
+    assert "Open at Shop" in client.get(f"/listing/{shown}").text
+    assert (
+        "Item 3" in client.get("/mail").text and "Shop: ok, 3 listings" in client.get("/log").text
+    )
+    assert client.get("/health").json()["ok"] is True
+    body = client.get("/metrics").text
+    assert "toys_listings 3" in body and "toys_last_success_timestamp_seconds 0" not in body
+    assert client.get("/img/..%2Ftoys.db").status_code == 404

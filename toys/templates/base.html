@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#141414">
+  <title>{% block title %}Toys{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="/static/app.css?v={{ version }}">
+</head>
+<body>
+  <header class="top">
+    <a class="mark" href="/">Toys<span>statues and kits</span></a>
+    <p class="status">
+      {% if running %}<span class="dot dot-run"></span>Sweeping now
+      {% elif last_run %}<span class="dot {{ 'dot-bad' if last_run.status == 'failed' or last_run.alerts.startswith('failed') else ('dot-warn' if last_run.status == 'partial' else '') }}"></span>Shops checked {{ last_run.finished | ago }}
+      {% else %}<span class="dot dot-warn"></span>Shops not checked yet{% endif %}
+    </p>
+  </header>
+  <nav class="tabs" aria-label="Pages">
+    <a href="/" {% if nav == 'shelf' %}aria-current="page"{% endif %}>Collection</a>
+    <a href="/orders" {% if nav == 'orders' %}aria-current="page"{% endif %}>On order{% if open_count %} <b class="n">{{ open_count }}</b>{% endif %}</a>
+    <a href="/new" {% if nav == 'new' %}aria-current="page"{% endif %}>New</a>
+    <a href="/profile" {% if nav == 'profile' %}aria-current="page"{% endif %}>Likes</a>
+    <a href="/log" {% if nav == 'log' %}aria-current="page"{% endif %}>Log</a>
+  </nav>
+  <main>{% block main %}{% endblock %}</main>
+  <footer class="foot">Toys {{ version }}</footer>
+</body>
+</html>

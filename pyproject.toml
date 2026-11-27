@@ -1,0 +1,9 @@
+[project]
+name = "toys"
+version = "0.1.0"
+description = "Statue and garage-kit collection, and a watch for new listings"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

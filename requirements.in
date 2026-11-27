@@ -1,0 +1,5 @@
+fastapi
+uvicorn
+jinja2
+python-multipart
+collectorkit[web] @ git+https://github.com/LukeEvansTech/collectorkit@v0.1.0

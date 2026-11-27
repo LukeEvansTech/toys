@@ -1,0 +1,9 @@
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["github>LukeEvansTech/renovate-config"],
+  // The collectorkit tag is pinned in requirements.in, which Renovate does not read unless
+  // told to. With this, one pull request moves the tag in both files.
+  pip_requirements: {
+    managerFilePatterns: ["/(^|/)requirements\\.in$/"],
+  },
+}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Log · Toys{% endblock %}
+{% block main %}
+<div class="lead">
+  <p class="quiet">Next sweep {{ next_at.strftime('%a %d %b %H:%M') }}. {{ counts.collection }} pieces in the collection, {{ counts.listings }} shop listings on record.{% if last_mail %} <a href="/mail">Last email{{ '' if last_mail.sent else ' (preview, not sent)' }}</a>.{% endif %}</p>
+  <form method="post" action="/sweep"><button type="submit" {{ 'disabled' if running }}>Check the shops now</button></form>
+</div>
+<h2 class="rule-head"><span>Sweeps</span><span class="n">{{ recent | length }}</span></h2>
+{% if recent %}
+<ul class="runs">
+  {% for r, cover in recent %}
+  <li class="{{ 'is-bad' if r.status == 'failed' or r.alerts.startswith('failed') }}">
+    <p><span class="num">{{ r.started }}</span> · {{ r.trigger }} · <b>{{ r.status }}</b>{% if r.alerts %} · mail: {{ r.alerts }}{% endif %}{% if r.error %} · {{ r.error }}{% endif %}</p>
+    <p class="sub">{{ cover | join(' · ') }}</p>
+  </li>
+  {% endfor %}
+</ul>
+{% else %}
+<div class="empty"><p>No sweep has run yet.</p></div>
+{% endif %}
+<h2 class="rule-head"><span>Load data</span></h2>
+<p class="quiet">The collection and the likes are built outside the app. Loading a file replaces what is here.</p>
+<form class="upload" method="post" action="/import" enctype="multipart/form-data">
+  <label><span>File</span><input type="file" name="file" accept="application/json,.json" required></label>
+  <label><span>It is</span><select name="kind"><option value="collection">collection.json</option><option value="profile">profile.json</option></select></label>
+  <button type="submit">Load</button>
+</form>
+{% endblock %}
