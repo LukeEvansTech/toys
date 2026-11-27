@@ -310,7 +310,10 @@ def test_a_listing_page_is_read_again_until_it_is_whole(env, monkeypatch):
     sweep.run(db, s)
     state["shop"] = ["1", "2", "3"]
     sweep.run(db, s)
-    listing = lambda: dict(db.one("SELECT * FROM listings WHERE key = '3'"))  # noqa: E731
+
+    def listing():
+        return dict(db.one("SELECT * FROM listings WHERE key = '3'"))
+
     first = sweep.fill_detail(db, s, FakeModel([]), listing())
     assert first["complete"] is False and len(first["photos"]) == 1
     again = sweep.fill_detail(db, s, FakeModel([]), listing())
