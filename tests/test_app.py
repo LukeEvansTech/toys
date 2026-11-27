@@ -75,7 +75,7 @@ def test_the_first_sweep_is_a_baseline_and_new_listings_are_mailed_once(env):
     s, db, state = env
     sweep.run(db, s)
     assert state["sent"] == [] and state["asked"] == []
-    state["shop"] = ["1", "2", "3"]
+    state["shop"] = ["1", "2", "3", "3"]  # a feed can show one product twice
     sweep.run(db, s)
     sweep.run(db, s)
     assert subjects(state) == ["Toys: 1 for you, 0 other new"]

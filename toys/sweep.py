@@ -414,6 +414,8 @@ def _run(db: DB, s: Settings, trigger: str, notify_on: bool, sample: int) -> int
             if got.items is None:  # a failed read is not an empty one
                 runs.source(db, run_id, got.name, error=got.error, seconds=got.seconds)
                 continue
+            # A feed read in pages can show one product twice when another is added between.
+            got.items = list({i.key: i for i in got.items}.values())
             runs.source(db, run_id, got.name, count=len(got.items), seconds=got.seconds)
             store(db, got.items)
             fresh = set(seen.fresh(db, got.name, [i.key for i in got.items]))
