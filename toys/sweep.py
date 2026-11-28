@@ -433,6 +433,11 @@ OWED = (
 )
 
 
+def same(db: DB, r: dict) -> bool:
+    now = db.one("SELECT name, tags, url, image FROM listings WHERE id = ?", r["id"])
+    return bool(now) and all(now[k] == r[k] for k in ("name", "tags", "url", "image"))
+
+
 def backlog(db: DB, s: Settings, cap: int, notify_on: bool = True) -> str:
     """Judge listings a baseline stored without a verdict, up to ``cap`` model calls, and
     mail the picks among them. The rest are only shown on the web. Returns a summary."""
@@ -453,7 +458,9 @@ def backlog(db: DB, s: Settings, cap: int, notify_on: bool = True) -> str:
                 continue
             got, name = ask(db, s, model, prof, r, i)
             asked += not (got is None and r["image"] and not name)
-            if got is not None:
+            # A sweep in the server's process may have changed the listing meanwhile; a
+            # verdict on what it used to say is not kept.
+            if got is not None and same(db, r):
                 answered += 1
                 record(db, r["id"], i, got)
         left = len(db.all(WAITING))

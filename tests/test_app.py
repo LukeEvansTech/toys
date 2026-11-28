@@ -95,6 +95,19 @@ def test_the_backlog_judges_a_baseline_and_mails_only_its_picks(env):
     assert len(state["sent"]) == 1 and sorted(state["asked"]) == ["Item 1", "Item 2"]
 
 
+def test_a_backlog_verdict_on_a_listing_changed_meanwhile_is_not_kept(env, monkeypatch):
+    s, db, state = env
+    sweep.run(db, s)
+
+    def renamed(_db, _model, _prof, name, *_):
+        db.run("UPDATE listings SET name = name || ' v2' WHERE name = ?", name)
+        return (False, 2, "a character he collects")
+
+    monkeypatch.setattr(sweep.judge, "listing", renamed)
+    assert sweep.backlog(db, s, 80).startswith("backlog: 0 judged, 2 left, mail none")
+    assert state["sent"] == []
+
+
 def test_a_backlog_that_judges_nothing_is_a_failure(env):
     s, db, state = env
     state["model"] = {"Item 1": None, "Item 2": None}
