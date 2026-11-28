@@ -476,6 +476,8 @@ def backlog(db: DB, s: Settings, cap: int, notify_on: bool = True) -> str:
             if mails[-1] != "sent":
                 break
         out = f"backlog: {answered} judged, {left} left, mail {', '.join(mails) or 'none'}"
+        if asked and not answered:
+            out += "; failed: the model did not answer"
         log.info("%s, model calls %s", out, model.usage.calls)
         return out
 

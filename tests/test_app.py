@@ -95,6 +95,15 @@ def test_the_backlog_judges_a_baseline_and_mails_only_its_picks(env):
     assert len(state["sent"]) == 1 and sorted(state["asked"]) == ["Item 1", "Item 2"]
 
 
+def test_a_backlog_the_model_answers_nothing_for_is_a_failure(env):
+    s, db, state = env
+    state["model"] = {"Item 1": None, "Item 2": None}
+    sweep.run(db, s)
+    assert sweep.backlog(db, s, 80) == (
+        "backlog: 0 judged, 2 left, mail none; failed: the model did not answer"
+    )
+
+
 def test_a_backlog_pick_hidden_by_a_keyword_since_is_not_mailed(env):
     s, db, state = env
     state["shop"] = [item("1", "Dragon statue")]
