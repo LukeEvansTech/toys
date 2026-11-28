@@ -1,0 +1,13 @@
+{% macro piece(i) -%}
+<li class="cell piece is-{{ i.group }}">
+  <a class="cell-link" href="/item/{{ i.id }}">
+    <span class="cell-head"><span class="code">{{ i.id }}</span><span class="age">{{ i.bought or 'No date' }}</span></span>
+    <span class="ph">{% if i.photo %}<img src="/img/{{ i.photo }}" alt="" loading="lazy" decoding="async">{% else %}<span class="no-ph">No photo yet</span>{% endif %}</span>
+    <span class="t">{{ i.item }}</span>
+    <span class="sub">{{ [i.maker, i.franchise] | select | join(' · ') or 'No maker or franchise set' }}</span>
+    <span class="sub">{{ i.vendor or 'Seller not known' }}</span>
+    <span class="price">{{ i.gbp_paid | gbp }}</span>
+    <span class="sub state">{{ i.state }}</span>
+  </a>
+</li>
+{%- endmacro %}

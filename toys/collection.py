@@ -87,6 +87,39 @@ def replace(db: DB, records: list) -> int:
     return len(new)
 
 
+def photo_links(db: DB, links: dict) -> int:
+    """Record where each piece's photo is to be fetched from; returns how many changed. A
+    piece keeps the photo it has until the new link's photo has been fetched."""
+    if not isinstance(links, dict) or not all(
+        isinstance(k, str) and isinstance(v, str) and v.startswith("https://")
+        for k, v in links.items()
+    ):
+        raise ValueError("expected record ids mapped to https links")
+    changed = 0
+    for k, v in links.items():
+        old = db.one("SELECT url FROM piece_photos WHERE id = ?", k)
+        if old is None or old["url"] != v:
+            db.run(
+                "INSERT INTO piece_photos (id, url) VALUES (?, ?)"
+                " ON CONFLICT(id) DO UPDATE SET url = excluded.url",
+                k,
+                v,
+            )
+            changed += 1
+    return changed
+
+
+def set_photo(db: DB, piece: str, name: str) -> None:
+    """An uploaded photo. It settles the piece's link too, so a fetch still queued for that
+    link does not replace it."""
+    db.run(
+        "INSERT INTO piece_photos (id, photo) VALUES (?, ?)"
+        " ON CONFLICT(id) DO UPDATE SET photo = excluded.photo, fetched = url",
+        piece,
+        name,
+    )
+
+
 def owned_counts(db: DB) -> dict[str, int]:
     """Pieces per franchise among what is owned or on order."""
     out: dict[str, int] = {}
@@ -99,7 +132,10 @@ def owned_counts(db: DB) -> dict[str, int]:
 def find(db: DB, show: str = "", franchise: str = "", vendor: str = "", q: str = "") -> list[dict]:
     """Records for a page, newest purchase first, undated last."""
     out = []
-    for r in db.all("SELECT * FROM collection ORDER BY bought = '', bought DESC, item"):
+    for r in db.all(
+        "SELECT c.*, COALESCE(p.photo, '') photo FROM collection c LEFT JOIN piece_photos p"
+        " ON p.id = c.id ORDER BY c.bought = '', c.bought DESC, c.item"
+    ):
         d = dict(r)
         d["group"] = group(d["state"])
         if show and d["group"] != show:

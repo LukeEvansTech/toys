@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_row.html" import row %}
+{% from "_piece.html" import piece %}
 {% block title %}Collection · Toys{% endblock %}
 {% block main %}
 {% if empty %}
@@ -30,7 +30,7 @@
   <button type="submit">Apply</button>
 </form>
 {% if items %}
-<ul class="rows">{% for i in items %}{{ row(i) }}{% endfor %}</ul>
+<ul class="grid grid-big">{% for i in items %}{{ piece(i) }}{% endfor %}</ul>
 {% else %}
 <div class="empty"><p>Nothing matches these filters. <a href="/">Clear them</a>.</p></div>
 {% endif %}
