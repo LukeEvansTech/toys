@@ -747,3 +747,26 @@ p.why {
 code {
   font-size: 13px;
 }
+
+/* ---------- the shelf: a photo per piece, its details beneath ---------- */
+.cell.is-closed .ph {
+  opacity: 0.45;
+}
+
+.piece-photo {
+  margin: 14px 0 0;
+  max-width: 720px;
+}
+
+.piece-photo img {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--paper);
+}
+
+/* A piece with no photo keeps its place in the grid without a bright blank. */
+.piece .no-ph {
+  background: var(--ground-2);
+  color: var(--ink-3);
+}

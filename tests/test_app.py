@@ -4,6 +4,7 @@ mail stubbed. Every name and number here is made up."""
 import datetime as dt
 import io
 import json
+import time
 
 import pytest
 from collectorkit import collect, runs
@@ -570,6 +571,37 @@ def test_the_collection_loads_as_a_whole_and_pages_show_it(env):
     assert up.status_code == 303 and len(collection.find(db)) == 1
     bad = client.post("/import", data={"kind": "collection"}, files={"file": ("c.json", "{")})
     assert bad.status_code == 400 and len(collection.find(db)) == 1
+
+
+def test_a_piece_shows_its_photo_and_keeps_it_when_the_records_are_reloaded(env, monkeypatch):
+    s, db, _ = env
+    client = TestClient(create_app(s, db, start_scheduler=False))
+    records = [{"id": "S001", "item": "Turtle statue", "state": "received"}]
+    collection.replace(db, records)
+    assert "No photo yet" in client.get("/").text
+    sent = client.post(
+        "/item/S001/photo", files={"file": ("a.png", picture("red"))}, follow_redirects=False
+    )
+    assert sent.status_code == 303
+    assert client.post("/item/S001/photo", files={"file": ("a.txt", b"no")}).status_code == 400
+    assert client.post("/item/S999/photo", files={"file": ("a.png", b"x")}).status_code == 404
+    collection.replace(db, records)
+    name = collection.find(db)[0]["photo"]
+    assert name and f"/img/{name}" in client.get("/").text
+    assert client.get(f"/img/{name}").status_code == 200
+    # A link replaces the photo once it is fetched; a link that is not https is refused.
+    monkeypatch.setattr("toys.web.images.download", lambda *a, **k: "fetched.jpg")
+    links = json.dumps({"S001": "https://shop.example/a.jpg"})
+    client.post("/import", data={"kind": "photos"}, files={"file": ("p.json", links)})
+    for _ in range(50):
+        if collection.find(db)[0]["photo"] == "fetched.jpg":
+            break
+        time.sleep(0.05)
+    assert collection.find(db)[0]["photo"] == "fetched.jpg"
+    bad = client.post(
+        "/import", data={"kind": "photos"}, files={"file": ("p.json", '{"S001": "file:///x"}')}
+    )
+    assert bad.status_code == 400
 
 
 def test_likes_are_edited_in_the_app(env):

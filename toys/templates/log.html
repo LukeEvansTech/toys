@@ -22,7 +22,7 @@
 <p class="quiet">The collection and the likes are built outside the app. Loading a file replaces what is here.</p>
 <form class="upload" method="post" action="/import" enctype="multipart/form-data">
   <label><span>File</span><input type="file" name="file" accept="application/json,.json" required></label>
-  <label><span>It is</span><select name="kind"><option value="collection">collection.json</option><option value="profile">profile.json</option></select></label>
+  <label><span>It is</span><select name="kind"><option value="collection">collection.json</option><option value="profile">profile.json</option><option value="photos">photos.json (record id to photo link)</option></select></label>
   <button type="submit">Load</button>
 </form>
 {% endblock %}

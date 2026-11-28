@@ -33,6 +33,12 @@ CREATE TABLE IF NOT EXISTS listings (
     detail TEXT NOT NULL DEFAULT '',
     UNIQUE (source, key)
 );
+-- A piece's photo, kept apart from the collection so reloading the records keeps it.
+CREATE TABLE IF NOT EXISTS piece_photos (
+    id TEXT PRIMARY KEY,
+    url TEXT NOT NULL DEFAULT '',
+    photo TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS collection (
     id TEXT PRIMARY KEY,
     item TEXT NOT NULL,

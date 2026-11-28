@@ -8,7 +8,7 @@ import json
 import threading
 from pathlib import Path
 
-from collectorkit import metrics, runs, scheduler
+from collectorkit import images, metrics, runs, scheduler
 from collectorkit.db import DB
 from collectorkit.llm import LLM
 from fastapi import FastAPI, Form, HTTPException, Request, UploadFile
@@ -22,6 +22,8 @@ from .db import open_db
 
 HERE = Path(__file__).parent
 MAX_UPLOAD = 5_000_000
+PHOTO_UPLOAD = 25_000_000
+PHOTOS = threading.Lock()
 FACT_LABELS = {
     "scale": "Scale",
     "size": "Size",
@@ -191,6 +193,32 @@ def create_app(s: Settings, opened: DB | None = None, start_scheduler: bool = Fa
             },
         )
 
+    def fetch_photos():
+        """Fetch the photos still owed, one at a time: a load of links returns at once."""
+        with PHOTOS:
+            for r in db.all("SELECT id, url FROM piece_photos WHERE photo = '' AND url != ''"):
+                name = images.download(r["url"], s.img_dir, referer=r["url"])
+                if name:
+                    db.run(
+                        "UPDATE piece_photos SET photo = ? WHERE id = ? AND url = ?",
+                        name,
+                        r["id"],
+                        r["url"],
+                    )
+
+    @app.post("/item/{item_id}/photo")
+    async def item_photo(item_id: str, file: UploadFile | None = None):
+        if file is None or db.one("SELECT 1 FROM collection WHERE id = ?", item_id) is None:
+            raise HTTPException(404)
+        raw = await file.read(PHOTO_UPLOAD + 1)
+        if len(raw) > PHOTO_UPLOAD:
+            raise HTTPException(413, "file too large")
+        try:
+            collection.set_photo(db, item_id, sweep.full(raw, s.img_dir))
+        except ValueError as e:
+            raise HTTPException(400, "not an image") from e
+        return RedirectResponse(f"/item/{item_id}", status_code=303)
+
     @app.get("/mail", response_class=HTMLResponse)
     def last_mail():
         m = sweep.last_mail(db)
@@ -209,6 +237,9 @@ def create_app(s: Settings, opened: DB | None = None, start_scheduler: bool = Fa
             data = json.loads(raw)
             if kind == "collection":
                 collection.replace(db, data)
+            elif kind == "photos":
+                collection.photo_links(db, data)
+                threading.Thread(target=fetch_photos, daemon=True).start()
             elif kind == "profile" and isinstance(data, dict):
                 profile.save(db, data)
             else:

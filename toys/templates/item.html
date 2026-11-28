@@ -3,6 +3,7 @@
 {% block main %}
 <p class="back"><a href="/">Collection</a></p>
 <h1 class="title">{{ i.item }}</h1>
+{% if i.photo %}<p class="piece-photo"><a href="/img/{{ i.photo }}"><img src="/img/{{ i.photo }}" alt="{{ i.item }}"></a></p>{% endif %}
 <dl class="facts">
   <div><dt>Record</dt><dd class="num">{{ i.id }}</dd></div>
   <div><dt>State</dt><dd class="{{ 'mark-open' if i.group == 'open' }}">{{ i.state }}</dd></div>
@@ -25,4 +26,9 @@
 <h2 class="rule-head"><span>Notes</span></h2>
 <ul class="plain">{% for n in i.notes %}<li>{{ n }}</li>{% endfor %}</ul>
 {% endif %}
+<h2 class="rule-head"><span>Photo</span></h2>
+<form class="upload" method="post" action="/item/{{ i.id }}/photo" enctype="multipart/form-data">
+  <label><span>{{ 'Replace it with' if i.photo else 'Add one' }}</span><input type="file" name="file" accept="image/*" required></label>
+  <button type="submit">Save photo</button>
+</form>
 {% endblock %}
