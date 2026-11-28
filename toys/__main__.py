@@ -55,8 +55,9 @@ def main(argv: list[str] | None = None) -> int:
             print("likes loaded")
         return 0
     if a.cmd == "backlog":
-        print(sweep.backlog(db, s, a.cap or s.judge_cap, notify_on=not a.no_notify))
-        return 0
+        done = sweep.backlog(db, s, a.cap or s.judge_cap, notify_on=not a.no_notify)
+        print(done)
+        return 1 if "failed" in done else 0
     run_id = sweep.run(db, s, trigger="cli", notify_on=not a.no_notify, sample=a.sample)
     row = db.one("SELECT status, alerts FROM runs WHERE id = ?", run_id)
     if row is None or row["status"] not in ("success", "partial"):

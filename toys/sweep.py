@@ -422,6 +422,10 @@ def heartbeat(db: DB, s: Settings, run_id: int, notes: list[str]) -> str:
     return result
 
 
+WAITING = (
+    "SELECT * FROM listings l WHERE judged IS NULL AND judged_as = '' AND dropped = 0"
+    " AND EXISTS (SELECT 1 FROM seen x WHERE x.source = l.source AND x.key = l.key) ORDER BY id"
+)
 OWED = (
     "SELECT * FROM listings l WHERE liked >= 2 AND dropped = 0 AND judged IS NOT NULL"
     " AND mailed IS NULL AND EXISTS (SELECT 1 FROM seen x WHERE x.source = l.source"
@@ -436,13 +440,8 @@ def backlog(db: DB, s: Settings, cap: int, notify_on: bool = True) -> str:
         c = s.common
         model = LLM(c.llm_url, c.llm_key, c.llm_model)
         prof = profile.load(db)
-        rows = db.all(
-            "SELECT * FROM listings l WHERE judged IS NULL AND judged_as = '' AND dropped = 0"
-            " AND EXISTS (SELECT 1 FROM seen x WHERE x.source = l.source AND x.key = l.key)"
-            " ORDER BY id"
-        )
         asked = answered = 0
-        for r in map(dict, rows):
+        for r in map(dict, db.all(WAITING)):
             if asked >= cap:
                 break
             tags = json.loads(r["tags"])
@@ -457,7 +456,15 @@ def backlog(db: DB, s: Settings, cap: int, notify_on: bool = True) -> str:
             if got is not None:
                 answered += 1
                 record(db, r["id"], i, got)
-        left = len(rows) - answered
+        left = len(db.all(WAITING))
+        # The likes may have changed since a pick was judged and its mail failed or was off.
+        for r in db.all(OWED, -1):
+            if profile.score(r["name"], json.loads(r["tags"]), r["url"], prof)[0] < 0:
+                db.run(
+                    "UPDATE listings SET dropped = 1, liked = 0, reason = ? WHERE id = ?",
+                    "hidden by a keyword",
+                    r["id"],
+                )
         note = "These were in the shops before the watch began."
         mails = []
         while True:
