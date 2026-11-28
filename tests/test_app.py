@@ -82,6 +82,19 @@ def test_the_first_sweep_is_a_baseline_and_new_listings_are_mailed_once(env):
     assert db.one("SELECT mailed FROM listings WHERE key = '3'")["mailed"]
 
 
+def test_the_backlog_judges_a_baseline_and_mails_only_its_picks(env):
+    s, db, state = env
+    state["model"] = {"Item 2": (False, 0, "not a franchise he collects")}
+    sweep.run(db, s)
+    assert sweep.backlog(db, s, 80) == "backlog: 2 judged, 0 left, mail sent"
+    assert subjects(state) == ["Toys: 1 for you, 0 other new"]
+    assert db.one("SELECT mailed FROM listings WHERE key = '1'")["mailed"]
+    assert db.one("SELECT judged, mailed FROM listings WHERE key = '2'")["mailed"] is None
+    assert sweep.backlog(db, s, 80) == "backlog: 0 judged, 0 left, mail none"
+    sweep.run(db, s)
+    assert len(state["sent"]) == 1 and sorted(state["asked"]) == ["Item 1", "Item 2"]
+
+
 def test_a_failed_send_leaves_the_listing_new(env):
     s, db, state = env
     sweep.run(db, s)

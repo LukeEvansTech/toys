@@ -26,6 +26,7 @@ python -m pytest -q
 python -m toys load collection collection.json
 python -m toys load profile profile.json
 python -m toys sweep --sample 4    # judge the 4 newest per shop: no mail, nothing marked seen
+python -m toys backlog --cap 400   # judge what the baseline stored; mail only the picks
 python -m toys serve
 ```
 

@@ -22,7 +22,8 @@ holds what the code does not say.
 - **A sweep that read nothing is not a success.** `/metrics` counts a run only when it read
   listings and its mail did not fail.
 - **The first sweep is a baseline.** So is the first read of a source added later. Baseline
-  listings are never announced.
+  listings are never announced by a sweep; `python -m toys backlog` judges them on request and
+  mails only the picks.
 - **Do not add evasion of bot checks** (stealth patches, captcha solving). A blocked source is
   recorded as failed and shown in coverage.
 - **Every scheduled pipeline alerts on the age of its last success**, not on errors or liveness.
