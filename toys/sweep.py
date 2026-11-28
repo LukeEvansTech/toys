@@ -324,7 +324,7 @@ def notes_for(sorted_: dict) -> list[str]:
         )
     if sorted_["over"]:
         out.append(f"{sorted_['over']} more new listing(s) are held over to the next sweep.")
-    return out
+    return out + sorted_.get("notes", [])
 
 
 def render(s: Settings, picks: list, rest: list, cover: list, notes: list, subject: str):
@@ -420,6 +420,85 @@ def heartbeat(db: DB, s: Settings, run_id: int, notes: list[str]) -> str:
         db.put(HEARTBEAT, week)
         return "nothing new"
     return result
+
+
+WAITING = (
+    "SELECT * FROM listings l WHERE judged IS NULL AND judged_as = '' AND dropped = 0"
+    " AND EXISTS (SELECT 1 FROM seen x WHERE x.source = l.source AND x.key = l.key) ORDER BY id"
+)
+OWED = (
+    "SELECT * FROM listings l WHERE liked >= 2 AND dropped = 0 AND judged IS NOT NULL"
+    " AND mailed IS NULL AND EXISTS (SELECT 1 FROM seen x WHERE x.source = l.source"
+    " AND x.key = l.key) ORDER BY liked DESC, id LIMIT ?"
+)
+
+
+def record_same(db: DB, r: dict, i: collect.Item, got: tuple[bool, int, str]) -> bool:
+    """Store a verdict only if the listing still reads as it did when the model was asked,
+    in one statement: a sweep in the server's process may have changed it meanwhile."""
+    db.run(
+        "UPDATE listings SET dropped = ?, liked = ?, reason = ?, judged = ?, judged_as = ?"
+        " WHERE id = ? AND judged IS NULL AND name = ? AND tags = ? AND url = ? AND image = ?",
+        int(got[0]),
+        got[1],
+        got[2],
+        runs.now(),
+        sig(i),
+        r["id"],
+        r["name"],
+        r["tags"],
+        r["url"],
+        r["image"],
+    )
+    return bool(db.one("SELECT 1 FROM listings WHERE id = ? AND judged IS NOT NULL", r["id"]))
+
+
+def backlog(db: DB, s: Settings, cap: int, notify_on: bool = True) -> str:
+    """Judge listings a baseline stored without a verdict, up to ``cap`` model calls, and
+    mail the picks among them. The rest are only shown on the web. Returns a summary."""
+    with LOCK:
+        c = s.common
+        model = LLM(c.llm_url, c.llm_key, c.llm_model)
+        prof = profile.load(db)
+        asked = answered = 0
+        for r in map(dict, db.all(WAITING)):
+            if asked >= cap:
+                break
+            tags = json.loads(r["tags"])
+            i = collect.Item(
+                r["key"], r["name"], r["url"], r["price"], r["image"], tags, r["source"]
+            )
+            if profile.score(i.name, i.tags, i.url, prof)[0] < 0:
+                record(db, r["id"], i, (True, 0, "hidden by a keyword"))
+                continue
+            got, name = ask(db, s, model, prof, r, i)
+            asked += not (got is None and r["image"] and not name)
+            if got is not None:
+                answered += record_same(db, r, i, got)
+        left = len(db.all(WAITING))
+        # The likes may have changed since a pick was judged and its mail failed or was off.
+        for r in db.all(OWED, -1):
+            if profile.score(r["name"], json.loads(r["tags"]), r["url"], prof)[0] < 0:
+                db.run(
+                    "UPDATE listings SET dropped = 1, liked = 0, reason = ? WHERE id = ?",
+                    "hidden by a keyword",
+                    r["id"],
+                )
+        note = "These were in the shops before the watch began."
+        mails = []
+        while True:
+            picks = [dict(r) for r in db.all(OWED, MAX_PICKS)]
+            if not picks:
+                break
+            sorted_ = {"picks": picks, "rest": [], "unanswered": 0, "over": 0, "notes": [note]}
+            mails.append(deliver(db, s, 0, sorted_, notify_on))
+            if mails[-1] != "sent":
+                break
+        out = f"backlog: {answered} judged, {left} left, mail {', '.join(mails) or 'none'}"
+        if left and not answered and cap > 0:
+            out += "; failed: nothing was judged"
+        log.info("%s, model calls %s", out, model.usage.calls)
+        return out
 
 
 def run(

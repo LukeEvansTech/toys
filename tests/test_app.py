@@ -82,6 +82,53 @@ def test_the_first_sweep_is_a_baseline_and_new_listings_are_mailed_once(env):
     assert db.one("SELECT mailed FROM listings WHERE key = '3'")["mailed"]
 
 
+def test_the_backlog_judges_a_baseline_and_mails_only_its_picks(env):
+    s, db, state = env
+    state["model"] = {"Item 2": (False, 0, "not a franchise he collects")}
+    sweep.run(db, s)
+    assert sweep.backlog(db, s, 80) == "backlog: 2 judged, 0 left, mail sent"
+    assert subjects(state) == ["Toys: 1 for you, 0 other new"]
+    assert db.one("SELECT mailed FROM listings WHERE key = '1'")["mailed"]
+    assert db.one("SELECT judged, mailed FROM listings WHERE key = '2'")["mailed"] is None
+    assert sweep.backlog(db, s, 80) == "backlog: 0 judged, 0 left, mail none"
+    sweep.run(db, s)
+    assert len(state["sent"]) == 1 and sorted(state["asked"]) == ["Item 1", "Item 2"]
+
+
+def test_a_backlog_verdict_on_a_listing_changed_meanwhile_is_not_kept(env, monkeypatch):
+    s, db, state = env
+    sweep.run(db, s)
+
+    def renamed(_db, _model, _prof, name, *_):
+        db.run("UPDATE listings SET name = name || ' v2' WHERE name = ?", name)
+        return (False, 2, "a character he collects")
+
+    monkeypatch.setattr(sweep.judge, "listing", renamed)
+    assert sweep.backlog(db, s, 80).startswith("backlog: 0 judged, 2 left, mail none")
+    assert state["sent"] == []
+
+
+def test_a_backlog_that_judges_nothing_is_a_failure(env):
+    s, db, state = env
+    state["model"] = {"Item 1": None, "Item 2": None}
+    sweep.run(db, s)
+    assert sweep.backlog(db, s, 80) == (
+        "backlog: 0 judged, 2 left, mail none; failed: nothing was judged"
+    )
+
+
+def test_a_backlog_pick_hidden_by_a_keyword_since_is_not_mailed(env):
+    s, db, state = env
+    state["shop"] = [item("1", "Dragon statue")]
+    sweep.run(db, s)
+    state["mail"] = "failed: SMTPConnectError"
+    assert sweep.backlog(db, s, 80).endswith("mail failed: SMTPConnectError")
+    profile.save(db, PROFILE | {"exclude": ["dragon"]})
+    state["mail"] = "sent"
+    assert sweep.backlog(db, s, 80) == "backlog: 0 judged, 0 left, mail none"
+    assert state["sent"] == [] and db.one("SELECT dropped FROM listings")["dropped"] == 1
+
+
 def test_a_failed_send_leaves_the_listing_new(env):
     s, db, state = env
     sweep.run(db, s)

@@ -3,6 +3,7 @@
 python -m toys serve                         # web UI on :8080 plus the scheduled sweeps
 python -m toys sweep [--no-notify]           # one sweep now
 python -m toys sweep --sample N              # judge the N newest per shop; no mail, nothing marked
+python -m toys backlog [--cap N] [--no-notify]  # judge what a baseline stored; mail the picks
 python -m toys load collection|profile FILE  # replace the collection or the likes from JSON
 """
 
@@ -26,6 +27,9 @@ def main(argv: list[str] | None = None) -> int:
     sw = sub.add_parser("sweep")
     sw.add_argument("--no-notify", action="store_true")
     sw.add_argument("--sample", type=int, default=0)
+    bl = sub.add_parser("backlog")
+    bl.add_argument("--cap", type=int, default=0)
+    bl.add_argument("--no-notify", action="store_true")
     ld = sub.add_parser("load")
     ld.add_argument("kind", choices=["collection", "profile"])
     ld.add_argument("file", type=Path)
@@ -50,6 +54,10 @@ def main(argv: list[str] | None = None) -> int:
             profile.save(db, data)
             print("likes loaded")
         return 0
+    if a.cmd == "backlog":
+        done = sweep.backlog(db, s, a.cap or s.judge_cap, notify_on=not a.no_notify)
+        print(done)
+        return 1 if "failed" in done else 0
     run_id = sweep.run(db, s, trigger="cli", notify_on=not a.no_notify, sample=a.sample)
     row = db.one("SELECT status, alerts FROM runs WHERE id = ?", run_id)
     if row is None or row["status"] not in ("success", "partial"):
