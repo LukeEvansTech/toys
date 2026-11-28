@@ -598,6 +598,12 @@ def test_a_piece_shows_its_photo_and_keeps_it_when_the_records_are_reloaded(env,
             break
         time.sleep(0.05)
     assert collection.find(db)[0]["photo"] == "fetched.jpg"
+    # A link whose photo cannot be fetched leaves the one already there.
+    monkeypatch.setattr("toys.web.images.download", lambda *a, **k: "")
+    links = json.dumps({"S001": "https://shop.example/gone.jpg"})
+    client.post("/import", data={"kind": "photos"}, files={"file": ("p.json", links)})
+    time.sleep(0.3)
+    assert collection.find(db)[0]["photo"] == "fetched.jpg"
     bad = client.post(
         "/import", data={"kind": "photos"}, files={"file": ("p.json", '{"S001": "file:///x"}')}
     )

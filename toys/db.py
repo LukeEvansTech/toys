@@ -37,7 +37,9 @@ CREATE TABLE IF NOT EXISTS listings (
 CREATE TABLE IF NOT EXISTS piece_photos (
     id TEXT PRIMARY KEY,
     url TEXT NOT NULL DEFAULT '',
-    photo TEXT NOT NULL DEFAULT ''
+    photo TEXT NOT NULL DEFAULT '',
+    -- The link the photo was fetched from; a link that differs is still owed a fetch.
+    fetched TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS collection (
     id TEXT PRIMARY KEY,

@@ -196,11 +196,12 @@ def create_app(s: Settings, opened: DB | None = None, start_scheduler: bool = Fa
     def fetch_photos():
         """Fetch the photos still owed, one at a time: a load of links returns at once."""
         with PHOTOS:
-            for r in db.all("SELECT id, url FROM piece_photos WHERE photo = '' AND url != ''"):
+            for r in db.all("SELECT id, url FROM piece_photos WHERE url != '' AND fetched != url"):
                 name = images.download(r["url"], s.img_dir, referer=r["url"])
                 if name:
                     db.run(
-                        "UPDATE piece_photos SET photo = ? WHERE id = ? AND url = ?",
+                        "UPDATE piece_photos SET photo = ?, fetched = url"
+                        " WHERE id = ? AND url = ? AND fetched != url",
                         name,
                         r["id"],
                         r["url"],

@@ -89,7 +89,7 @@ def replace(db: DB, records: list) -> int:
 
 def photo_links(db: DB, links: dict) -> int:
     """Record where each piece's photo is to be fetched from; returns how many changed. A
-    piece whose link is unchanged keeps the photo it has."""
+    piece keeps the photo it has until the new link's photo has been fetched."""
     if not isinstance(links, dict) or not all(
         isinstance(k, str) and isinstance(v, str) and v.startswith("https://")
         for k, v in links.items()
@@ -100,8 +100,8 @@ def photo_links(db: DB, links: dict) -> int:
         old = db.one("SELECT url FROM piece_photos WHERE id = ?", k)
         if old is None or old["url"] != v:
             db.run(
-                "INSERT INTO piece_photos (id, url, photo) VALUES (?, ?, '')"
-                " ON CONFLICT(id) DO UPDATE SET url = excluded.url, photo = ''",
+                "INSERT INTO piece_photos (id, url) VALUES (?, ?)"
+                " ON CONFLICT(id) DO UPDATE SET url = excluded.url",
                 k,
                 v,
             )
@@ -110,9 +110,11 @@ def photo_links(db: DB, links: dict) -> int:
 
 
 def set_photo(db: DB, piece: str, name: str) -> None:
+    """An uploaded photo. It settles the piece's link too, so a fetch still queued for that
+    link does not replace it."""
     db.run(
         "INSERT INTO piece_photos (id, photo) VALUES (?, ?)"
-        " ON CONFLICT(id) DO UPDATE SET photo = excluded.photo",
+        " ON CONFLICT(id) DO UPDATE SET photo = excluded.photo, fetched = url",
         piece,
         name,
     )
