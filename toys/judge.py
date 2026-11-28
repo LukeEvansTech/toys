@@ -26,7 +26,9 @@ Decide:
 - drop: true if the statue is sexualised in any way (R18, NSFW, 18+, cast-off, lingerie,
   swimsuit, bunny suit, emphasised breasts or underwear, a "sexy" pose), judging from the photo
   as well as the title. When unsure, true. Also true if it is not a statue or figure (a base,
-  an accessory, a deposit or shipping line), or if it is a character on his "never" list.
+  an accessory, a deposit or shipping line), if it is a character on his "never" list, or if
+  his notes say he does not want this kind or style of figure, judging the style from the
+  photo as well as the title.
 - like: 0 = not for him; 1 = a franchise he collects but not a character he collects;
   2 = a character or subject he collects; 3 = a character he collects from a studio he buys
   from, or closely related to pieces he owns. A franchise he does not collect is 0.
