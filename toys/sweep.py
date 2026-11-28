@@ -433,9 +433,24 @@ OWED = (
 )
 
 
-def same(db: DB, r: dict) -> bool:
-    now = db.one("SELECT name, tags, url, image FROM listings WHERE id = ?", r["id"])
-    return bool(now) and all(now[k] == r[k] for k in ("name", "tags", "url", "image"))
+def record_same(db: DB, r: dict, i: collect.Item, got: tuple[bool, int, str]) -> bool:
+    """Store a verdict only if the listing still reads as it did when the model was asked,
+    in one statement: a sweep in the server's process may have changed it meanwhile."""
+    db.run(
+        "UPDATE listings SET dropped = ?, liked = ?, reason = ?, judged = ?, judged_as = ?"
+        " WHERE id = ? AND judged IS NULL AND name = ? AND tags = ? AND url = ? AND image = ?",
+        int(got[0]),
+        got[1],
+        got[2],
+        runs.now(),
+        sig(i),
+        r["id"],
+        r["name"],
+        r["tags"],
+        r["url"],
+        r["image"],
+    )
+    return bool(db.one("SELECT 1 FROM listings WHERE id = ? AND judged IS NOT NULL", r["id"]))
 
 
 def backlog(db: DB, s: Settings, cap: int, notify_on: bool = True) -> str:
@@ -458,11 +473,8 @@ def backlog(db: DB, s: Settings, cap: int, notify_on: bool = True) -> str:
                 continue
             got, name = ask(db, s, model, prof, r, i)
             asked += not (got is None and r["image"] and not name)
-            # A sweep in the server's process may have changed the listing meanwhile; a
-            # verdict on what it used to say is not kept.
-            if got is not None and same(db, r):
-                answered += 1
-                record(db, r["id"], i, got)
+            if got is not None:
+                answered += record_same(db, r, i, got)
         left = len(db.all(WAITING))
         # The likes may have changed since a pick was judged and its mail failed or was off.
         for r in db.all(OWED, -1):
